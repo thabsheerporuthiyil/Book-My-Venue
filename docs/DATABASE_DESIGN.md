@@ -1,98 +1,250 @@
-# DATABASE_DESIGN.md
-
 # Book My Venue — Database Design
 
-## 1. Database Ownership Principle
+# 1. Database Strategy
 
-In microservices, each service owns its own database.
-
-Recommended databases:
+Book My Venue uses:
 
 ```text
-auth_db
-venue_db
-booking_db
-notification_db
-ai_db
+PostgreSQL
+django-tenants
+Schema Per Tenant Architecture
 ```
 
-Services should not directly modify another service's database.
-
-## 2. Auth Service Database
-
-## 2.1 User
-
-Stores platform users.
-
-Fields:
+Current provider:
 
 ```text
-id UUID primary key
-email unique
-password_hash
+Neon PostgreSQL
+```
+
+The system follows:
+
+```text
+Shared Database
++
+Separate Schema Per Tenant
+```
+
+This gives:
+
+* Strong tenant isolation
+* Easier backups
+* Better security
+* Enterprise SaaS capabilities
+* Easier future microservice extraction
+
+---
+
+# 2. PostgreSQL Schema Layout
+
+## Public Schema
+
+The `public` schema stores shared data used across all tenants.
+
+```text
+public
+│
+├── users
+├── customer_profiles
+├── tenants
+├── tenant_domains
+├── tenant_memberships
+├── service_registry
+├── tenant_service_provisions
+├── django_migrations
+├── django_content_type
+├── django_admin_log
+├── django_session
+└── shared reference tables
+```
+
+---
+
+## Tenant Schemas
+
+Each tenant gets its own PostgreSQL schema.
+
+Example:
+
+```text
+tenant_abc_hall
+tenant_city_palace
+tenant_grand_convention
+tenant_green_auditorium
+```
+
+Each schema contains:
+
+```text
+venues
+venue_images
+amenities
+venue_policies
+bookings
+availability_rules
+blocked_slots
+notifications
+analytics
+```
+
+---
+
+# 3. Shared Schema Tables (Public)
+
+# 3.1 User
+
+Stores all platform users.
+
+```text
+id UUID PK
+email VARCHAR UNIQUE
+password
 full_name
 phone
-role enum CUSTOMER/VENDOR/ADMIN
-is_active boolean
-is_verified boolean
+global_role
+is_active
+is_verified
+last_login
 created_at
 updated_at
 ```
 
-## 2.2 CustomerProfile
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
-user_id UUID
-date_of_birth nullable
+email
+global_role
+is_active
+```
+
+---
+
+# 3.2 CustomerProfile
+
+```text
+id UUID PK
+user_id UUID FK
 profile_image nullable
+date_of_birth nullable
 created_at
 updated_at
 ```
 
-## 2.3 VendorProfile
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
-user_id UUID
-business_name
-business_email
-business_phone
-approval_status enum PENDING/APPROVED/REJECTED/SUSPENDED
-rejection_reason nullable
-created_at
-updated_at
+user_id
 ```
 
-## 2.4 RefreshToken
+---
 
-Fields:
+# 3.3 Tenant
 
-```text
-id UUID primary key
-user_id UUID
-token_hash
-expires_at
-revoked_at nullable
-created_at
-```
-
-## 3. Venue Service Database
-
-## 3.1 VenueCategory
-
-Fields:
+Represents a vendor organization.
 
 ```text
-id UUID primary key
+id UUID PK
 name
-slug unique
-description nullable
-is_active boolean
+slug UNIQUE
+schema_name UNIQUE
+status
+contact_email
+contact_phone
+created_by UUID FK
+created_at
+updated_at
+```
+
+Indexes:
+
+```text
+slug
+schema_name
+status
+created_by
+```
+
+---
+
+# 3.4 TenantDomain
+
+Stores tenant domains.
+
+```text
+id UUID PK
+tenant_id UUID FK
+domain UNIQUE
+is_primary
+created_at
+updated_at
+```
+
+Indexes:
+
+```text
+domain
+tenant_id
+```
+
+Examples:
+
+```text
+grandhall.bookmyvenue.com
+citypalace.bookmyvenue.com
+```
+
+---
+
+# 3.5 TenantMembership
+
+Stores users belonging to tenants.
+
+```text
+id UUID PK
+tenant_id UUID FK
+user_id UUID FK
+role
+is_active
+created_at
+updated_at
+```
+
+Roles:
+
+```text
+OWNER
+ADMIN
+MANAGER
+STAFF
+```
+
+Indexes:
+
+```text
+tenant_id
+user_id
+role
+is_active
+```
+
+Unique constraint:
+
+```text
+tenant_id + user_id
+```
+
+---
+
+# 3.6 ServiceRegistry
+
+Defines platform services.
+
+```text
+id UUID PK
+code UNIQUE
+name
+description
+is_active
+requires_tenant_provisioning
 created_at
 updated_at
 ```
@@ -100,24 +252,110 @@ updated_at
 Examples:
 
 ```text
-Auditorium
-Wedding Hall
-Conference Hall
-Party Hall
-Turf
-Event Space
+VENUES
+BOOKINGS
+NOTIFICATIONS
+AI
+ANALYTICS
+REVIEWS
 ```
 
-## 3.2 Venue
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
+code
+is_active
+```
+
+---
+
+# 3.7 TenantServiceProvision
+
+Stores services enabled for a tenant.
+
+```text
+id UUID PK
+tenant_id UUID FK
+service_id UUID FK
+schema_name
+is_enabled
+provisioned_at
+created_at
+updated_at
+```
+
+Indexes:
+
+```text
+tenant_id
+service_id
+is_enabled
+```
+
+Unique constraint:
+
+```text
+tenant_id + service_id
+```
+
+---
+
+# 4. Tenant Schema Tables
+
+The following tables exist inside every tenant schema.
+
+---
+
+# 4.1 VenueCategory
+
+```text
+id UUID PK
+name
+slug UNIQUE
+description
+is_active
+created_at
+updated_at
+```
+
+Indexes:
+
+```text
+slug
+is_active
+```
+
+---
+
+# 4.2 Amenity
+
+```text
+id UUID PK
+name
+slug UNIQUE
+icon nullable
+is_active
+created_at
+updated_at
+```
+
+Indexes:
+
+```text
+slug
+is_active
+```
+
+---
+
+# 4.3 Venue
+
+```text
+id UUID PK
 vendor_id UUID
 category_id UUID
 name
-slug unique
+slug
 description
 address
 city
@@ -126,135 +364,136 @@ country
 postal_code
 latitude nullable
 longitude nullable
-capacity integer
-base_price decimal
-price_type enum HOURLY/HALF_DAY/FULL_DAY/CUSTOM
-approval_status enum DRAFT/PENDING_APPROVAL/APPROVED/REJECTED/SUSPENDED
-rejection_reason nullable
-is_active boolean
+capacity
+base_price
+price_type
+approval_status
+is_active
 created_at
 updated_at
 ```
 
-Notes:
-
-- `vendor_id` comes from Auth Service.
-- Venue Service stores vendor_id as reference only.
-- Venue is visible to customers only when `approval_status = APPROVED`.
-
-## 3.3 VenueImage
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
-venue_id UUID
+vendor_id
+category_id
+city
+capacity
+base_price
+approval_status
+is_active
+```
+
+Composite indexes:
+
+```text
+(city, approval_status)
+(category_id, approval_status)
+(city, category_id)
+```
+
+---
+
+# 4.4 VenueImage
+
+```text
+id UUID PK
+venue_id UUID FK
 image_url
 public_id nullable
 caption nullable
-is_primary boolean
-sort_order integer
+is_primary
+sort_order
 created_at
 updated_at
 ```
 
-## 3.4 Amenity
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
-name
-slug unique
-icon nullable
-is_active boolean
-created_at
-updated_at
+venue_id
+is_primary
+sort_order
 ```
 
-Examples:
+---
+
+# 4.5 VenueAmenity
 
 ```text
-Parking
-AC
-Stage
-Dining Hall
-Sound System
-Projector
-WiFi
-Changing Room
-```
-
-## 3.5 VenueAmenity
-
-Fields:
-
-```text
-id UUID primary key
-venue_id UUID
-amenity_id UUID
+id UUID PK
+venue_id UUID FK
+amenity_id UUID FK
 created_at
 ```
 
-## 3.6 VenuePolicy
-
-Fields:
+Unique constraint:
 
 ```text
-id UUID primary key
-venue_id UUID
+venue_id + amenity_id
+```
+
+Indexes:
+
+```text
+venue_id
+amenity_id
+```
+
+---
+
+# 4.6 VenuePolicy
+
+```text
+id UUID PK
+venue_id UUID FK
 title
 content
-policy_type enum CANCELLATION/FOOD/MUSIC/PAYMENT/GENERAL/OTHER
+policy_type
 created_at
 updated_at
 ```
 
-Examples:
+Indexes:
 
 ```text
-Outside catering allowed
-Loud music not allowed after 10 PM
-Cancellation allowed before 7 days
-Advance payment required
+venue_id
+policy_type
 ```
 
-## 4. Booking Service Database
+---
 
-## 4.1 AvailabilityRule
+# 5. Booking Tables
 
-Defines regular availability of a venue.
+---
 
-Fields:
+# 5.1 AvailabilityRule
 
 ```text
-id UUID primary key
+id UUID PK
 venue_id UUID
-day_of_week integer 0-6
-start_time time
-end_time time
-is_available boolean
+day_of_week
+start_time
+end_time
+is_available
 created_at
 updated_at
 ```
 
-Example:
+Indexes:
 
 ```text
-venue_id: VENUE_123
-day_of_week: 6
-start_time: 09:00
-end_time: 22:00
+venue_id
+day_of_week
 ```
 
-## 4.2 BlockedSlot
+---
 
-Used when vendor blocks a date/time.
-
-Fields:
+# 5.2 BlockedSlot
 
 ```text
-id UUID primary key
+id UUID PK
 venue_id UUID
 start_datetime
 end_datetime
@@ -264,21 +503,29 @@ created_at
 updated_at
 ```
 
-## 4.3 Booking
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
-booking_reference unique
+venue_id
+start_datetime
+end_datetime
+```
+
+---
+
+# 5.3 Booking
+
+```text
+id UUID PK
+booking_reference UNIQUE
 venue_id UUID
 customer_id UUID
 vendor_id UUID
 start_datetime
 end_datetime
-guest_count integer
-status enum PENDING/ACCEPTED/REJECTED/CANCELLED/EXPIRED/COMPLETED
-total_amount decimal nullable
+guest_count
+status
+total_amount
 special_requests nullable
 rejection_reason nullable
 cancelled_reason nullable
@@ -286,19 +533,31 @@ created_at
 updated_at
 ```
 
-Important:
-
-- `venue_id` references Venue Service data by ID.
-- `customer_id` and `vendor_id` reference Auth Service users/profiles by ID.
-- Booking Service owns booking status.
-- Booking creation must check conflicts.
-
-## 4.4 BookingStatusHistory
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
+venue_id
+customer_id
+vendor_id
+status
+start_datetime
+end_datetime
+```
+
+Composite indexes:
+
+```text
+(venue_id, start_datetime)
+(venue_id, end_datetime)
+(venue_id, status)
+```
+
+---
+
+# 5.4 BookingStatusHistory
+
+```text
+id UUID PK
 booking_id UUID
 old_status nullable
 new_status
@@ -307,198 +566,175 @@ reason nullable
 created_at
 ```
 
-## 5. Notification Service Database
-
-## 5.1 Notification
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
+booking_id
+new_status
+```
+
+---
+
+# 6. Notification Tables
+
+---
+
+# 6.1 Notification
+
+```text
+id UUID PK
 recipient_user_id UUID
-notification_type enum BOOKING_CREATED/BOOKING_ACCEPTED/BOOKING_REJECTED/VENUE_APPROVED/VENUE_REJECTED
+notification_type
 title
 message
-is_read boolean
-metadata jsonb nullable
+is_read
+metadata JSONB
 created_at
 read_at nullable
 ```
 
-## 5.2 NotificationTemplate
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
-template_key unique
+recipient_user_id
+is_read
+notification_type
+```
+
+---
+
+# 6.2 NotificationTemplate
+
+```text
+id UUID PK
+template_key UNIQUE
 subject
 body
-channel enum EMAIL/IN_APP/SMS/WHATSAPP
-is_active boolean
+channel
+is_active
 created_at
 updated_at
 ```
 
-## 5.3 EmailLog
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
+template_key
+channel
+is_active
+```
+
+---
+
+# 6.3 EmailLog
+
+```text
+id UUID PK
 recipient_email
 subject
 body
-status enum PENDING/SENT/FAILED
+status
 error_message nullable
 sent_at nullable
 created_at
 ```
 
-## 6. AI Service Database
-
-## 6.1 KnowledgeDocument
-
-Stores documents used for RAG.
-
-Fields:
+Indexes:
 
 ```text
-id UUID primary key
-source_type enum VENUE_POLICY/HELP_DOC/FAQ/VENDOR_GUIDE/TERMS
-source_id UUID nullable
+recipient_email
+status
+```
+
+---
+
+# 7. Future AI Tables
+
+---
+
+# 7.1 KnowledgeDocument
+
+```text
+id UUID PK
+source_type
+source_id
 title
 content
-metadata jsonb nullable
+metadata JSONB
 created_at
 updated_at
 ```
 
-## 6.2 DocumentChunk
+---
 
-Stores chunked text.
-
-Fields:
+# 7.2 DocumentChunk
 
 ```text
-id UUID primary key
+id UUID PK
 document_id UUID
 chunk_text
-chunk_index integer
-metadata jsonb nullable
+chunk_index
+metadata JSONB
 created_at
 ```
 
-## 6.3 EmbeddingRecord
+---
 
-Stores vector embeddings.
-
-Fields:
+# 7.3 EmbeddingRecord
 
 ```text
-id UUID primary key
+id UUID PK
 chunk_id UUID
-embedding vector
+embedding VECTOR
 embedding_model
 created_at
 ```
 
-If using pgvector, `embedding` uses vector type.
+---
 
-## 6.4 AIConversation
-
-Fields:
+# 7.4 AIConversation
 
 ```text
-id UUID primary key
+id UUID PK
 user_id UUID
-session_title nullable
+session_title
 created_at
 updated_at
 ```
 
-## 6.5 AIMessage
+---
 
-Fields:
+# 7.5 AIMessage
 
 ```text
-id UUID primary key
+id UUID PK
 conversation_id UUID
-role enum USER/ASSISTANT/SYSTEM/TOOL
+role
 content
-metadata jsonb nullable
+metadata JSONB
 created_at
 ```
 
-## 6.6 AIToolCall
+---
 
-Fields:
+# 7.6 AIToolCall
 
 ```text
-id UUID primary key
+id UUID PK
 conversation_id UUID
 tool_name
-input_payload jsonb
-output_payload jsonb nullable
-status enum SUCCESS/FAILED
-error_message nullable
+input_payload JSONB
+output_payload JSONB
+status
+error_message
 created_at
 ```
 
-## 7. Important Indexes
+---
 
-## Auth DB
+# 8. Booking Conflict Rule
 
-```text
-User.email
-User.role
-VendorProfile.approval_status
-```
-
-## Venue DB
-
-```text
-Venue.city
-Venue.category_id
-Venue.capacity
-Venue.base_price
-Venue.approval_status
-Venue.vendor_id
-Amenity.slug
-VenuePolicy.venue_id
-```
-
-## Booking DB
-
-```text
-Booking.venue_id
-Booking.customer_id
-Booking.vendor_id
-Booking.status
-Booking.start_datetime
-Booking.end_datetime
-Booking(venue_id, start_datetime, end_datetime)
-```
-
-## Notification DB
-
-```text
-Notification.recipient_user_id
-Notification.is_read
-EmailLog.status
-```
-
-## AI DB
-
-```text
-KnowledgeDocument.source_type
-DocumentChunk.document_id
-AIConversation.user_id
-```
-
-## 8. Booking Conflict Logic
-
-A new booking conflicts if:
+A booking conflicts when:
 
 ```text
 existing_start < new_end
@@ -506,78 +742,69 @@ AND
 existing_end > new_start
 ```
 
-Only these statuses should block new bookings:
+Blocking statuses:
 
 ```text
 ACCEPTED
 ```
 
-Depending on business rule, `PENDING` may also temporarily block a slot.
-
-Recommended first version:
+Future:
 
 ```text
-ACCEPTED blocks the slot.
-PENDING does not block permanently but should be rechecked before accept.
+PENDING
+ACCEPTED
 ```
 
-For stricter booking:
+with expiration support.
+
+---
+
+# 9. Transaction Rules
+
+The following operations must always be atomic:
 
 ```text
-PENDING and ACCEPTED both block temporarily.
-PENDING expires after fixed time.
+Vendor Registration
+Tenant Provisioning
+Booking Creation
+Booking Acceptance
+Booking Cancellation
+Payment Processing
 ```
 
-## 9. Race Condition Protection
+Always use:
 
-Danger case:
+```python
+transaction.atomic()
+```
+
+---
+
+# 10. Soft Delete Strategy
+
+Do not hard delete:
 
 ```text
-User A checks availability.
-User B checks availability.
-Both see available.
-Both create booking.
+Users
+Venues
+Bookings
+Tenants
 ```
-
-Solution:
-
-- Use database transaction.
-- Recheck conflict during booking creation.
-- Lock relevant rows if needed.
-- Keep booking creation atomic.
-
-## 10. Deletion Rules
-
-### Venue
-
-Do not hard delete venue if future bookings exist.
 
 Use:
 
 ```text
-is_active = false
-approval_status = SUSPENDED
+is_active
+status
 ```
 
-### User
+instead.
 
-Do not hard delete user if booking history exists.
+---
 
-Use:
+# 11. Audit Fields
 
-```text
-is_active = false
-```
-
-### Booking
-
-Do not delete bookings.
-
-Use status changes.
-
-## 11. Audit Fields
-
-Every important table should include:
+All important tables should contain:
 
 ```text
 created_at
@@ -586,9 +813,26 @@ created_by nullable
 updated_by nullable
 ```
 
-For MVP, at least use:
+Current MVP:
 
 ```text
 created_at
 updated_at
 ```
+
+---
+
+# 12. Senior Level Database Principles
+
+* UUID primary keys
+* Schema based tenant isolation
+* Proper indexing
+* Unique constraints
+* Composite indexes
+* Transactional writes
+* Soft deletion
+* JSONB for flexible metadata
+* Database level integrity
+* Future pgvector support
+* Production ready PostgreSQL design
+* Easy migration to microservices

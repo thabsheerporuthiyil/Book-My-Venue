@@ -1,494 +1,792 @@
-# ARCHITECTURE.md
-
 # Book My Venue — System Architecture
 
-## 1. Architecture Goal
+# 1. Architecture Goal
 
-Book My Venue is designed as a scalable microservices-based SaaS platform.
+Book My Venue is designed as a **multi-tenant SaaS platform** for venue businesses.
 
-The architecture should support:
+The system follows a **Modular Monolith architecture** in the MVP stage while keeping clear boundaries that allow extraction into microservices in the future.
 
-- Independent service boundaries
-- Independent data ownership
-- API Gateway routing
-- Secure authentication
-- Async communication for side effects
-- AI service separation
-- Future payment and subscription services
-- Production-ready deployment
+The architecture goals are:
 
-## 2. High-Level Architecture
+* Multi tenant SaaS platform
+* Strong tenant data isolation
+* Domain driven modular structure
+* API first development
+* Easy future migration to microservices
+* Production ready authentication and authorization
+* Scalable database architecture
+* Clear separation of business domains
+* Async processing support
+* AI integration support
+
+---
+
+# 2. High Level Architecture
 
 ```text
-React Frontend
-      |
-      v
-API Gateway / Nginx
-      |
-      |---------------- Auth Service
-      |---------------- Venue Service
-      |---------------- Booking Service
-      |---------------- Notification Service
-      |---------------- AI Service
-      |
-PostgreSQL / Redis / Vector DB / Object Storage
+                    React Frontend
+                           |
+                           |
+                    Nginx / API Gateway
+                           |
+                           |
+                 Django Modular Monolith
+                           |
+        ------------------------------------------------
+        |              |              |               |
+     Accounts        Tenants        Venues         Bookings
+        |              |              |               |
+        ------------------------------------------------
+                           |
+                     Notification Module
+                           |
+                         AI Module
+                           |
+                    PostgreSQL + Redis
 ```
 
-## 3. Services
+---
 
-## 3.1 Auth Service
+# 3. Architecture Style
 
-### Responsibility
-
-Auth Service manages identity and access.
-
-It owns:
-
-- Users
-- Roles
-- Authentication
-- JWT generation
-- Refresh tokens
-- Basic user profiles
-
-### Main Features
-
-- Register customer
-- Register vendor
-- Login
-- Refresh token
-- Get current user
-- Role management
-
-### Owned Data
-
-- User
-- Role
-- RefreshToken
-- VendorProfile basic status
-- CustomerProfile basic data
-
-### Technology
-
-- Django REST Framework
-- PostgreSQL
-
-## 3.2 Venue Service
-
-### Responsibility
-
-Venue Service manages all venue-related data.
-
-It owns:
-
-- Venues
-- Venue images
-- Amenities
-- Categories
-- Venue policies
-- Venue approval status
-
-### Main Features
-
-- Create venue
-- Update venue
-- Upload images
-- Add amenities
-- Add policies
-- Admin approval
-- Public venue listing
-- Venue detail
-
-### Owned Data
-
-- Venue
-- VenueImage
-- VenueCategory
-- Amenity
-- VenueAmenity
-- VenuePolicy
-
-### Technology
-
-- Django REST Framework
-- PostgreSQL
-- Cloudinary/S3 for images
-
-## 3.3 Booking Service
-
-### Responsibility
-
-Booking Service manages bookings and availability.
-
-It owns:
-
-- Booking requests
-- Booking status
-- Availability rules
-- Blocked slots
-- Conflict prevention
-- Booking status history
-
-### Main Features
-
-- Check availability
-- Create booking request
-- Prevent double booking
-- Vendor accept/reject booking
-- Customer cancel booking
-- Booking history
-
-### Owned Data
-
-- Booking
-- AvailabilityRule
-- BlockedSlot
-- BookingStatusHistory
-
-### Technology
-
-- Django REST Framework
-- PostgreSQL
-
-### Important Rule
-
-Booking Service is the final source of truth for availability.
-
-## 3.4 Notification Service
-
-### Responsibility
-
-Notification Service handles asynchronous communication.
-
-It owns:
-
-- Notifications
-- Email logs
-- Notification templates
-- Delivery status
-
-### Main Features
-
-- Booking request notification
-- Booking accepted/rejected notification
-- Venue approval notification
-- Reminder notification later
-
-### Owned Data
-
-- Notification
-- NotificationTemplate
-- EmailLog
-
-### Technology
-
-- Django or FastAPI
-- Celery
-- Redis
-- PostgreSQL
-
-## 3.5 AI Service
-
-### Responsibility
-
-AI Service manages RAG and agentic AI features.
-
-It owns:
-
-- AI conversations
-- Messages
-- Embeddings
-- Document chunks
-- AI tool calls
-- RAG pipeline
-
-### Main Features
-
-- AI venue recommendation
-- Venue policy Q&A
-- Venue description generator
-- AI booking assistant
-- Vendor insights later
-- Admin summary assistant later
-
-### Owned Data
-
-- KnowledgeDocument
-- DocumentChunk
-- EmbeddingRecord
-- AIConversation
-- AIMessage
-- AIToolCall
-
-### Technology
-
-- FastAPI
-- LangChain or LlamaIndex
-- pgvector/Qdrant/Chroma
-- PostgreSQL
-- LLM provider
-
-## 4. API Gateway
-
-Use Nginx as the first API Gateway.
-
-Example routes:
+Current implementation:
 
 ```text
-/api/auth/*        -> auth-service
-/api/venues/*      -> venue-service
-/api/bookings/*    -> booking-service
-/api/notifications/* -> notification-service
-/api/ai/*          -> ai-service
+Modular Monolith
+```
+
+Future target:
+
+```text
+Microservices Architecture
+```
+
+Reason:
+
+A modular monolith is easier to:
+
+* develop
+* deploy
+* maintain
+* debug
+* test
+
+during the early stages of a SaaS product.
+
+When traffic and team size increase, modules can be extracted into independent services.
+
+---
+
+# 4. Application Structure
+
+```text
+apps/
+├── accounts/
+├── tenants/
+├── venues/
+├── bookings/
+├── notifications/
+├── ai/
+├── common/
+└── core/
+```
+
+Each module contains:
+
+```text
+models.py
+serializers.py
+views.py
+services.py
+selectors.py
+permissions.py
+urls.py
+```
+
+---
+
+# 5. Module Responsibilities
+
+# 5.1 Accounts Module
+
+Responsible for:
+
+* Authentication
+* User management
+* JWT tokens
+* Customer registration
+* Vendor registration
+* Current user information
+* Context validation
+
+### Owns
+
+```text
+User
+CustomerProfile
+RefreshToken
+```
+
+### APIs
+
+```text
+POST /api/auth/register/customer/
+POST /api/auth/register/vendor/
+POST /api/auth/login/
+POST /api/auth/refresh/
+GET  /api/auth/me/
+POST /api/auth/context/
+```
+
+---
+
+# 5.2 Tenants Module
+
+Responsible for:
+
+* Tenant creation
+* Tenant memberships
+* Tenant domains
+* Service provisioning
+* Tenant context
+
+### Owns
+
+```text
+Tenant
+TenantDomain
+TenantMembership
+ServiceRegistry
+TenantServiceProvision
+```
+
+### APIs
+
+```text
+GET /api/tenants/my-tenants/
+POST /api/tenants/switch/
+```
+
+---
+
+# 5.3 Venues Module
+
+Responsible for:
+
+* Venue management
+* Venue images
+* Amenities
+* Categories
+* Venue policies
+
+### Owns
+
+```text
+Venue
+VenueImage
+Amenity
+VenuePolicy
+VenueCategory
+```
+
+---
+
+# 5.4 Bookings Module
+
+Responsible for:
+
+* Availability
+* Bookings
+* Booking history
+* Conflict prevention
+
+### Owns
+
+```text
+Booking
+AvailabilityRule
+BlockedSlot
+BookingStatusHistory
+```
+
+---
+
+# 5.5 Notifications Module
+
+Responsible for:
+
+* Email notifications
+* In app notifications
+* Templates
+* Delivery tracking
+
+### Owns
+
+```text
+Notification
+NotificationTemplate
+EmailLog
+```
+
+---
+
+# 5.6 AI Module
+
+Responsible for:
+
+* RAG
+* Embeddings
+* AI assistant
+* Venue recommendation
+* Vendor insights
+
+### Owns
+
+```text
+KnowledgeDocument
+DocumentChunk
+EmbeddingRecord
+AIConversation
+AIMessage
+AIToolCall
+```
+
+---
+
+# 6. Multi Tenant Architecture
+
+Book My Venue uses:
+
+```text
+django-tenants
+```
+
+with:
+
+```text
+Schema Per Tenant
+```
+
+architecture.
+
+---
+
+# 7. PostgreSQL Schema Layout
+
+```text
+public
+│
+├── users
+├── customer_profiles
+├── tenants
+├── tenant_domains
+├── tenant_memberships
+├── service_registry
+├── tenant_service_provisions
+└── shared_reference_tables
+```
+
+Tenant schemas:
+
+```text
+tenant_abc_hall
+tenant_green_palace
+tenant_city_auditorium
+tenant_star_convention
+```
+
+Each tenant schema contains:
+
+```text
+venues
+bookings
+notifications
+analytics
+```
+
+---
+
+# 8. Why Schema Based Multi Tenancy?
+
+Advantages:
+
+### Strong Isolation
+
+Each tenant has its own schema.
+
+### Security
+
+One tenant cannot accidentally read another tenant's data.
+
+### Easier Backup
+
+Individual tenant backup and restore.
+
+### Easier Migration
+
+Tenant specific migrations.
+
+### Enterprise Ready
+
+Supports:
+
+* white labeling
+* custom domains
+* custom features
+* subscription plans
+
+---
+
+# 9. Tenant Resolution Flow
+
+```text
+Incoming Request
+        |
+        |
+Tenant Middleware
+        |
+        |
+Resolve Domain
+        |
+        |
+Load Tenant Schema
+        |
+        |
+Set search_path
+        |
+        |
+Execute Request
+```
+
+Example:
+
+```text
+abc.bookmyvenue.com
+```
+
+loads:
+
+```text
+tenant_abc
+```
+
+schema.
+
+---
+
+# 10. Shared Data vs Tenant Data
+
+## Shared (Public Schema)
+
+```text
+Users
+Authentication
+Tenants
+Memberships
+Subscriptions
+Service Registry
+Domains
+```
+
+## Tenant Schema
+
+```text
+Venues
+Bookings
+Notifications
+Analytics
+Reviews
+Reports
+```
+
+---
+
+# 11. Service Registry Architecture
+
+Services are dynamically configurable.
+
+```text
+ServiceRegistry
+```
+
+stores:
+
+```text
+VENUES
+BOOKINGS
+NOTIFICATIONS
+AI
+REVIEWS
+ANALYTICS
+```
+
+Each tenant gets provisioned services through:
+
+```text
+TenantServiceProvision
 ```
 
 Benefits:
 
-- One base API URL for frontend
-- Central routing
-- Easier local development
-- Easier production deployment
+* feature flags
+* subscription plans
+* tenant specific enablement
+* future SaaS monetization
 
-## 5. Communication Patterns
+---
 
-## 5.1 Synchronous Communication
-
-Used when immediate result is required.
-
-Examples:
+# 12. Tenant Provisioning Flow
 
 ```text
-Booking Service -> Venue Service
-Check if venue exists and is approved.
-
-AI Service -> Venue Service
-Search venues for recommendation.
-
-AI Service -> Booking Service
-Check availability before suggesting booking.
+Vendor Registration
+        |
+Create User
+        |
+Create Tenant
+        |
+Create Membership
+        |
+Create Domain
+        |
+Provision Services
+        |
+Create Tenant Schema
+        |
+Run Tenant Migrations
 ```
 
-Recommended protocol:
+---
+
+# 13. Authentication Architecture
+
+Authentication is centralized.
 
 ```text
-HTTP REST APIs
+JWT Authentication
 ```
 
-## 5.2 Asynchronous Communication
-
-Used for side effects and background jobs.
-
-Examples:
+Tokens:
 
 ```text
-BookingCreated -> Notification Service
-BookingAccepted -> Notification Service
-VenueApproved -> Notification Service
-```
-
-Initial tool:
-
-```text
-Redis + Celery
-```
-
-Future options:
-
-```text
-RabbitMQ
-Kafka
-NATS
-```
-
-## 6. Authentication Flow
-
-```text
-1. User logs in through Auth Service.
-2. Auth Service returns JWT.
-3. Frontend stores token.
-4. Frontend sends token in Authorization header.
-5. API Gateway forwards request.
-6. Each service validates JWT.
-7. Service checks role/permission before action.
+Access Token
+Refresh Token
 ```
 
 Header:
 
 ```http
-Authorization: Bearer <access_token>
+Authorization: Bearer <token>
 ```
 
-## 7. Service-to-Service Security
+---
 
-Services should not blindly trust each other.
+# 14. Authorization Layers
 
-Use:
+## Layer 1
 
-- Internal API key
-- Service token
-- JWT validation
-- Network-level restrictions later
-- Separate internal routes where needed
+Authentication
 
-## 8. Data Ownership Rule
+## Layer 2
 
-Each service owns its own database tables.
+Global Role
 
-Other services should not directly write another service's database.
+```text
+ADMIN
+USER
+```
+
+## Layer 3
+
+Tenant Membership Role
+
+```text
+OWNER
+ADMIN
+MANAGER
+STAFF
+```
+
+## Layer 4
+
+Object Permissions
 
 Example:
 
 ```text
-Venue Service owns venue data.
-Booking Service stores venue_id but does not edit venue table.
-AI Service can retrieve allowed data through APIs or controlled sync jobs.
+Vendor can update only own venues.
 ```
 
-## 9. Database Strategy
+---
 
-Recommended for learning and production-style design:
+# 15. API Design Principles
+
+All APIs use:
 
 ```text
-auth_db
-venue_db
-booking_db
-notification_db
-ai_db
+APIView
 ```
 
-Each service connects only to its own database.
+No GenericAPIView.
 
-## 10. AI Architecture
+No ViewSets.
+
+Reason:
+
+* explicit logic
+* better control
+* easier scaling
+* easier permission handling
+
+---
+
+# 16. API Documentation
+
+API documentation uses:
+
+```text
+drf-spectacular
+Swagger UI
+OpenAPI 3
+```
+
+Every API has:
+
+* request schema
+* response schema
+* status codes
+
+using:
+
+```python
+@extend_schema
+```
+
+---
+
+# 17. Business Logic Pattern
+
+Business logic should not be placed directly inside views.
+
+Architecture:
+
+```text
+APIView
+     ↓
+Serializer
+     ↓
+Service Layer
+     ↓
+Selector Layer
+     ↓
+Models
+```
+
+---
+
+# 18. Services Layer
+
+Responsible for:
+
+* business rules
+* transactions
+* orchestration
+* side effects
+
+Example:
+
+```text
+create_tenant()
+create_booking()
+accept_booking()
+```
+
+---
+
+# 19. Selectors Layer
+
+Responsible for:
+
+* complex queries
+* optimized fetching
+* reusable read operations
+
+Example:
+
+```text
+get_user_tenants()
+get_tenant_membership()
+get_available_venues()
+```
+
+---
+
+# 20. Database Architecture
+
+Current database:
+
+```text
+PostgreSQL
+```
+
+Provider:
+
+```text
+Neon
+```
+
+Environment:
+
+```text
+DATABASE_URL
+```
+
+Connection pooling:
+
+```text
+PgBouncer
+```
+
+---
+
+# 21. Caching Layer
+
+Future:
+
+```text
+Redis
+```
+
+Usage:
+
+* rate limiting
+* cache
+* background jobs
+* sessions
+* OTP
+* notifications
+
+---
+
+# 22. Background Processing
+
+Future:
+
+```text
+Celery
+Redis
+```
+
+Tasks:
+
+* emails
+* notifications
+* reports
+* AI indexing
+* analytics
+
+---
+
+# 23. File Storage
+
+Future:
+
+```text
+AWS S3
+```
+
+Used for:
+
+* venue images
+* documents
+* invoices
+
+---
+
+# 24. Logging
+
+Future:
+
+```text
+Structured Logging
+```
+
+Stack:
+
+```text
+Django Logging
+Sentry
+ELK
+```
+
+---
+
+# 25. Deployment Architecture
 
 ```text
 Frontend
-   |
-Django/Core API or API Gateway
-   |
-FastAPI AI Service
-   |
-Retriever / Tools / LLM
-   |
-Vector DB + Service APIs
+     |
+Nginx
+     |
+Django App
+     |
+PostgreSQL (Neon)
+     |
+Redis
 ```
 
-AI can call tools such as:
-
-- Search venues
-- Get venue details
-- Check availability
-- Retrieve policy chunks
-- Generate description
-
-Important:
+Containerized using:
 
 ```text
-AI should not confirm bookings directly.
-Booking Service must verify all real booking actions.
+Docker
+Docker Compose
 ```
 
-## 11. Booking Reliability
+---
 
-Booking creation must be protected against race conditions.
-
-Rules:
-
-- Check conflict inside database transaction.
-- Lock relevant records or use database constraints where possible.
-- Never trust frontend availability result.
-- Recheck availability before accepting booking.
-- Store status history.
-
-Conflict condition:
-
-```text
-existing_start < new_end
-AND
-existing_end > new_start
-```
-
-## 12. Deployment Architecture for Development
-
-Use Docker Compose:
-
-```text
-frontend
-gateway
-auth-service
-venue-service
-booking-service
-notification-service
-ai-service
-auth-db
-venue-db
-booking-db
-notification-db
-ai-db
-redis
-vector-db
-```
-
-## 13. Production Considerations
-
-Later production setup:
-
-- Docker images for each service
-- Nginx reverse proxy
-- Managed PostgreSQL
-- Managed Redis
-- S3/Cloudinary
-- CI/CD using GitHub Actions
-- Centralized logging
-- Error monitoring
-- HTTPS
-- Environment-based settings
-- Health check endpoints
-
-## 14. Health Check Endpoints
-
-Each service should expose:
+# 26. Health Endpoints
 
 ```http
-GET /health
+GET /health/
 ```
 
 Response:
 
 ```json
 {
-  "status": "ok",
-  "service": "venue-service"
+  "status": "ok"
 }
 ```
 
-## 15. Failure Handling
+---
 
-### AI Service Down
+# 27. Future Extraction to Microservices
 
-Core booking should continue working.
-
-### Notification Service Down
-
-Booking should succeed; notification should retry.
-
-### Venue Service Down
-
-Booking creation may fail because venue validation is required.
-
-### Booking Service Down
-
-Booking-related actions should be unavailable, but venue browsing can still work.
-
-## 16. Senior-Level Architecture Rule
-
-Start with the minimum useful services:
+Possible extraction order:
 
 ```text
-Auth Service
-Venue Service
-Booking Service
-Notification Service
-AI Service
+1. Notifications
+2. AI
+3. Bookings
+4. Venues
+5. Accounts
 ```
 
-Do not create Payment, Analytics, Review, and Subscription services until the core system is stable.
+The current modular architecture is intentionally designed so each module can become an independent service with minimal refactoring.
+
+---
+
+# 28. Senior Level Architecture Principles
+
+* Domain driven modules
+* Service layer pattern
+* Selector pattern
+* Multi tenant architecture
+* API first design
+* Schema based isolation
+* Explicit APIViews
+* OpenAPI documentation
+* Transactional business logic
+* Future microservice readiness
+* Production ready PostgreSQL architecture
+* Clear ownership boundaries
+* SaaS friendly design

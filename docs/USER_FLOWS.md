@@ -1,133 +1,399 @@
-# USER_FLOWS.md
-
 # Book My Venue — User Flows
 
-## 1. Customer Registration Flow
+# 1. Customer Registration Flow
 
 ```text
-1. Customer opens platform.
-2. Customer clicks Register.
-3. Customer enters name, email, password, phone.
-4. Auth Service validates data.
-5. Auth Service creates user with CUSTOMER role.
-6. Customer receives success response.
-7. Customer logs in.
-8. Auth Service returns JWT access and refresh tokens.
+Customer
+    |
+    v
+Register Page
+    |
+    v
+POST /api/v1/auth/register/customer/
+    |
+    v
+Auth Service
+    |
+    ├── Create User
+    ├── Create Customer Profile
+    └── Return Success
 ```
 
-## 2. Vendor Registration Flow
+Response:
+
+```json
+{
+  "message": "Registration successful."
+}
+```
+
+---
+
+# 2. Vendor Registration Flow
 
 ```text
-1. Vendor opens platform.
-2. Vendor selects Register as Vendor.
-3. Vendor enters business details.
-4. Auth Service creates user with VENDOR role.
-5. Vendor profile is marked as PENDING_APPROVAL.
-6. Admin reviews vendor.
-7. Admin approves or rejects vendor.
-8. Approved vendor can create venue listings.
+Vendor
+    |
+    v
+Register Page
+    |
+    v
+POST /api/v1/auth/register/vendor/
 ```
 
-## 3. Admin Login Flow
+Auth Service performs:
 
 ```text
-1. Admin logs in.
-2. Auth Service validates credentials.
-3. Auth Service returns JWT with ADMIN role.
-4. Admin accesses admin dashboard.
+Create User
+Create Tenant
+Create Domain
+Create Tenant Membership
+Provision Services
 ```
 
-## 4. Vendor Venue Creation Flow
+Flow:
 
 ```text
-1. Vendor logs in.
-2. Vendor opens dashboard.
-3. Vendor clicks Add Venue.
-4. Vendor enters:
-   - venue name
-   - category
-   - description
-   - location
-   - capacity
-   - price
-   - amenities
-   - policies
-5. Venue Service validates request.
-6. Venue Service checks vendor ownership/permission.
-7. Venue is saved with PENDING_APPROVAL status.
-8. Admin receives venue approval notification.
+Vendor
+    |
+    v
+Auth Service
+    |
+    ├── User
+    ├── Tenant
+    ├── Domain
+    ├── Membership
+    └── Service Provisioning
 ```
 
-## 5. Venue Approval Flow
+Response:
+
+```json
+{
+  "message": "Vendor registration successful."
+}
+```
+
+---
+
+# 3. Login Flow
 
 ```text
-1. Admin opens pending venues.
-2. Admin reviews venue details.
-3. Admin approves or rejects venue.
-4. Venue Service updates status.
-5. If approved, venue becomes visible to customers.
-6. Notification Service notifies vendor.
+User
+    |
+    v
+Login Page
+    |
+    v
+POST /api/v1/auth/login/
 ```
 
-## 6. Customer Venue Search Flow
+Auth Service:
 
 ```text
-1. Customer opens venue listing page.
-2. Customer enters filters:
-   - location
-   - category
-   - capacity
-   - date/time
-   - price range
-   - amenities
-3. Frontend sends request to Venue Service.
-4. Venue Service returns approved venues.
-5. If date/time is provided, frontend can call Booking Service to check availability.
-6. Customer views suitable venues.
+Validate credentials
+Generate JWT tokens
+Return user information
 ```
 
-## 7. Customer Venue Detail Flow
+Response:
+
+```json
+{
+  "access": "...",
+  "refresh": "...",
+  "user": {}
+}
+```
+
+---
+
+# 4. My Profile Flow
 
 ```text
-1. Customer clicks venue card.
-2. Frontend requests venue details from Venue Service.
-3. Venue Service returns:
-   - venue information
-   - images
-   - amenities
-   - policies
-   - location
-   - price
-4. Customer selects preferred date and time.
-5. Frontend calls Booking Service to check availability.
-6. Booking Service returns available/not available.
+Frontend
+    |
+Authorization: Bearer JWT
+    |
+    v
+GET /api/v1/auth/me/
 ```
 
-## 8. Booking Request Flow
+Backend:
 
 ```text
-1. Customer selects venue, date, start time, and end time.
-2. Frontend sends booking request to Booking Service.
-3. Booking Service validates customer JWT.
-4. Booking Service checks venue exists and is approved.
-5. Booking Service checks for overlapping bookings.
-6. If no conflict, booking is created with PENDING status.
-7. BookingCreated event is published.
-8. Notification Service notifies vendor.
-9. Customer sees booking request submitted.
+Validate JWT
+Load User
+Return User Profile
 ```
 
-## 9. Booking Conflict Flow
+---
+
+# 5. Tenant Selection Flow
+
+A user may belong to multiple organizations.
 
 ```text
-1. Customer tries to book a venue.
-2. Booking Service checks existing bookings.
-3. If existing booking overlaps with requested time, request is rejected.
-4. Customer receives message: selected slot is unavailable.
-5. Customer may choose another slot.
+User
+    |
+    v
+GET /api/v1/tenants/my-tenants/
 ```
 
-Conflict condition:
+Response:
+
+```json
+[
+  {
+    "tenant_id": "",
+    "name": "",
+    "role": "OWNER"
+  }
+]
+```
+
+User selects a tenant.
+
+Frontend stores:
+
+```text
+selectedTenantId
+```
+
+---
+
+# 6. Authenticated Request Flow
+
+```text
+Frontend
+    |
+Authorization: Bearer JWT
+X-Tenant-Id: tenant_uuid
+    |
+    v
+API
+```
+
+Every protected request contains:
+
+```http
+Authorization: Bearer <token>
+X-Tenant-Id: <tenant_uuid>
+```
+
+---
+
+# 7. Request Validation Flow
+
+```text
+Frontend
+      |
+      | Authorization: Bearer JWT
+      | X-Tenant-Id
+      |
+      v
+API Gateway
+      |
+      ├── Validate JWT
+      ├── Verify Membership
+      ├── Add Internal Headers
+      |
+      v
+Application Service
+```
+
+Internal headers:
+
+```text
+X-User-Id
+X-Tenant-Id
+X-Role
+```
+
+---
+
+# 8. Tenant Resolution Flow
+
+Request:
+
+```http
+Authorization: Bearer xxx
+X-Tenant-Id: tenant_uuid
+```
+
+Backend:
+
+```text
+JWT Authentication
+        |
+        v
+Tenant Middleware
+        |
+        v
+Find Membership
+        |
+        v
+Set Current Tenant
+```
+
+Then:
+
+```python
+request.tenant
+request.tenant_membership
+request.role
+```
+
+become available.
+
+---
+
+# 9. Venue Creation Flow
+
+```text
+Tenant Owner
+      |
+      v
+Create Venue
+      |
+      v
+POST /api/v1/venues/
+```
+
+Backend:
+
+```text
+Validate JWT
+Validate Tenant
+Validate Role
+Create Venue
+```
+
+Database:
+
+```text
+tenant_schema.venues
+```
+
+Response:
+
+```json
+{
+  "id": "",
+  "name": "",
+  "status": "DRAFT"
+}
+```
+
+---
+
+# 10. Venue Update Flow
+
+```text
+Tenant Owner
+      |
+      v
+PATCH /api/v1/venues/{id}/
+```
+
+Backend:
+
+```text
+Check Ownership
+Check Role
+Update Venue
+```
+
+---
+
+# 11. Venue Listing Flow
+
+```text
+Customer
+      |
+      v
+GET /api/v1/public/venues/
+```
+
+Filters:
+
+* city
+* category
+* capacity
+* price
+* amenities
+
+Response:
+
+```json
+{
+  "count": 100,
+  "results": []
+}
+```
+
+---
+
+# 12. Venue Detail Flow
+
+```text
+Customer
+      |
+      v
+GET /api/v1/public/venues/{id}/
+```
+
+Returns:
+
+* venue details
+* images
+* amenities
+* policies
+* pricing
+
+---
+
+# 13. Booking Creation Flow
+
+```text
+Customer
+      |
+      v
+POST /api/v1/bookings/
+```
+
+Backend:
+
+```text
+Validate JWT
+Validate Tenant
+Validate Venue
+Check Availability
+Create Booking
+```
+
+Response:
+
+```json
+{
+  "booking_reference": "BMV123456",
+  "status": "PENDING"
+}
+```
+
+---
+
+# 14. Booking Conflict Flow
+
+```text
+Customer A
+Customer B
+      |
+      v
+Book Same Slot
+```
+
+System checks:
 
 ```text
 existing_start < new_end
@@ -135,124 +401,228 @@ AND
 existing_end > new_start
 ```
 
-## 10. Vendor Accept Booking Flow
+If conflict:
 
-```text
-1. Vendor opens booking requests.
-2. Vendor selects a pending booking.
-3. Vendor clicks Accept.
-4. Booking Service validates vendor owns the venue.
-5. Booking Service rechecks conflict.
-6. Booking status changes to ACCEPTED.
-7. BookingAccepted event is published.
-8. Notification Service notifies customer.
+```json
+{
+  "message": "Selected slot is unavailable."
+}
 ```
 
-## 11. Vendor Reject Booking Flow
+---
+
+# 15. Vendor Accept Booking Flow
 
 ```text
-1. Vendor opens booking requests.
-2. Vendor selects a pending booking.
-3. Vendor clicks Reject.
-4. Vendor optionally enters rejection reason.
-5. Booking Service validates vendor owns the venue.
-6. Booking status changes to REJECTED.
-7. BookingRejected event is published.
-8. Notification Service notifies customer.
+Vendor
+      |
+      v
+PATCH /api/v1/bookings/{id}/accept/
 ```
 
-## 12. Customer Cancel Booking Flow
+Backend:
 
 ```text
-1. Customer opens My Bookings.
-2. Customer selects booking.
-3. Customer clicks Cancel.
-4. Booking Service validates customer owns booking.
-5. Booking Service checks cancellation rules.
-6. Booking status changes to CANCELLED if allowed.
-7. BookingCancelled event is published.
-8. Notification Service notifies vendor.
+Validate Role
+Verify Ownership
+Recheck Availability
+Update Status
 ```
 
-## 13. AI Venue Recommendation Flow
+Status:
 
 ```text
-1. Customer opens AI assistant.
-2. Customer asks:
-   "I need a hall in Calicut for 500 people under 80000 with parking."
-3. AI Service extracts filters:
-   - city: Calicut
-   - capacity: 500+
-   - max price: 80000
-   - amenity: parking
-4. AI Service calls Venue Service or uses allowed search tools.
-5. Venue results are ranked.
-6. AI returns recommended venues.
-7. Customer selects a venue.
-8. Booking Service performs actual availability check.
+PENDING -> ACCEPTED
 ```
 
-Important rule:
+---
+
+# 16. Vendor Reject Booking Flow
 
 ```text
-AI recommends.
-Booking Service verifies.
-Database confirms.
+PATCH /api/v1/bookings/{id}/reject/
 ```
 
-## 14. RAG Venue Policy Q&A Flow
+Status:
 
 ```text
-1. Customer opens venue detail page.
-2. Customer asks:
-   "Is outside catering allowed?"
-3. AI Service retrieves venue policy chunks from vector DB.
-4. AI Service generates answer using retrieved policy.
-5. AI response includes grounded answer.
-6. If policy is missing, AI says it cannot confirm.
+PENDING -> REJECTED
 ```
 
-## 15. AI Booking Assistant Flow
+---
+
+# 17. Customer Cancel Booking Flow
 
 ```text
-1. Customer asks AI to find a venue.
-2. AI extracts requirements.
-3. AI searches venues.
-4. AI checks availability using Booking Service.
-5. AI suggests options.
-6. Customer chooses one option.
-7. AI creates booking draft.
-8. Customer confirms.
-9. Booking Service creates actual booking.
+PATCH /api/v1/bookings/{id}/cancel/
 ```
 
-The AI should not silently create confirmed bookings.
-
-## 16. Notification Flow
+Status:
 
 ```text
-1. Core service publishes an event.
-2. Notification Service receives event.
-3. Notification Service selects template.
-4. Notification Service sends email/in-app notification.
-5. Notification Service stores notification log.
+PENDING -> CANCELLED
+ACCEPTED -> CANCELLED
 ```
 
-## 17. Failure Flow: AI Service Down
+---
+
+# 18. Notification Flow
 
 ```text
-1. Customer opens normal search.
-2. AI Service is unavailable.
-3. Normal venue search should still work.
-4. Frontend displays AI assistant unavailable message.
+Booking Created
+       |
+       v
+Event
+       |
+       v
+Notification Service
+       |
+       ├── Email
+       ├── In App Notification
+       └── Push Notification
 ```
 
-## 18. Failure Flow: Notification Service Down
+Notification failure should not affect booking creation.
+
+---
+
+# 19. Tenant Invitation Flow (Future)
 
 ```text
-1. Booking is created successfully.
-2. Notification Service fails.
-3. Booking should not be rolled back.
-4. Event remains pending/retried.
-5. Notification is sent later.
+Owner
+     |
+     v
+Invite Member
+     |
+     v
+Email Invitation
+     |
+     v
+Accept Invitation
+     |
+     v
+Membership Created
 ```
+
+---
+
+# 20. AI Recommendation Flow (Future)
+
+```text
+User:
+"I need an auditorium in Kochi for 500 people."
+```
+
+Flow:
+
+```text
+User
+   |
+   v
+AI Service
+   |
+   ├── Extract Requirements
+   ├── Search Venues
+   ├── Rank Results
+   └── Return Recommendations
+```
+
+---
+
+# 21. RAG Policy Q&A Flow (Future)
+
+```text
+User:
+"Can I bring outside food?"
+```
+
+Flow:
+
+```text
+User
+   |
+   v
+AI Service
+   |
+   ├── Retrieve Policy Chunks
+   ├── Generate Answer
+   └── Return Response
+```
+
+---
+
+# 22. AI Booking Assistant Flow (Future)
+
+```text
+User
+   |
+   v
+AI Assistant
+   |
+   ├── Search Venues
+   ├── Check Availability
+   ├── Suggest Options
+   └── Create Booking Draft
+```
+
+Important:
+
+```text
+AI never confirms bookings directly.
+Booking Service remains the source of truth.
+```
+
+---
+
+# 23. Failure Flow: AI Service Down
+
+```text
+AI Service Unavailable
+        |
+        v
+Normal Booking Flow Continues
+```
+
+---
+
+# 24. Failure Flow: Notification Service Down
+
+```text
+Booking Created
+      |
+Notification Failed
+      |
+Retry Later
+```
+
+Booking should never be rolled back.
+
+---
+
+# 25. Future Microservice Extraction Flow
+
+Current:
+
+```text
+Django Modular Monolith
+```
+
+Future:
+
+```text
+Auth Service
+Venue Service
+Booking Service
+Notification Service
+AI Service
+```
+
+Communication:
+
+```text
+REST
+Events
+Queues
+```
+
+The current architecture is designed so that each module can be extracted into independent services with minimal refactoring.

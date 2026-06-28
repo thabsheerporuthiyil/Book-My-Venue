@@ -1,259 +1,582 @@
-# PRODUCT_REQUIREMENTS.md
+# Book My Venue — Product Requirements Document (PRD)
 
-# Book My Venue — Product Requirements Document
+# 1. Product Overview
 
-## 1. Product Overview
+Book My Venue is a multi tenant SaaS platform that enables businesses to manage and rent venues online.
 
-**Book My Venue** is a SaaS-enabled venue booking platform where customers can search, compare, and book venues such as auditoriums, wedding halls, conference halls, event spaces, party halls, and turfs.
+The platform supports:
 
-Venue owners can register as vendors, list their venues, manage availability, handle booking requests, update pricing, upload images, define policies, and view business insights from a vendor dashboard.
+* Auditoriums
+* Wedding Halls
+* Convention Centers
+* Turfs
+* Conference Rooms
+* Hospitals
+* Clinics
+* Event Spaces
+* Party Halls
+* Any bookable venue
 
-The platform is designed using a microservices architecture with a separate AI service for RAG-based assistance and agentic AI workflows.
+The system allows venue owners to create their own organizations, manage venues, accept bookings, configure policies, and use AI powered tools.
 
-## 2. Product Vision
+Customers can search venues, check availability, and make booking requests.
 
-To build a scalable, production-ready venue booking marketplace that helps:
+The platform is designed to become a production grade SaaS product with AI capabilities and future microservices extraction.
 
-- Customers find and book suitable venues easily.
-- Venue owners manage bookings and availability digitally.
-- Admins control platform quality, approvals, and operations.
-- AI assist users, vendors, and admins with search, recommendations, policy Q&A, and insights.
+---
 
-## 3. Target Users
+# 2. Product Vision
 
-### 3.1 Customer
+Build a scalable and production ready venue management ecosystem that allows:
 
-A customer is a person who wants to book a venue for an event.
+* Businesses to manage bookings digitally
+* Customers to discover and reserve venues easily
+* Organizations to manage multiple staff members
+* AI powered assistance for customers and vendors
+* Future SaaS subscriptions and billing
+
+---
+
+# 3. Core Principles
+
+The system should be:
+
+* Multi tenant
+* Scalable
+* Secure
+* Extensible
+* AI ready
+* Microservice friendly
+* Production ready
+
+---
+
+# 4. Tenant Model
+
+Every business owner gets:
+
+```text
+Tenant (Organization)
+```
+
+Examples:
+
+```text
+Grand Convention Center
+ABC Turf Management
+City Hospital
+Royal Auditorium
+```
+
+Each tenant has:
+
+* Own venues
+* Own bookings
+* Own staff
+* Own notifications
+* Own settings
+* Own data isolation
+
+---
+
+# 5. User Types
+
+## Customer
+
+Books venues.
+
+Capabilities:
+
+* Register
+* Login
+* Search venues
+* View venue details
+* Check availability
+* Make bookings
+* Cancel bookings
+* View booking history
+* Use AI assistant
+
+---
+
+## Tenant Owner
+
+Creates organization and manages business.
+
+Capabilities:
+
+* Register organization
+* Manage staff
+* Create venues
+* Manage bookings
+* View analytics
+* Configure settings
+* Use AI features
+
+---
+
+## Staff
+
+Works under a tenant.
+
+Capabilities depend on permissions.
+
+Examples:
+
+* Venue Manager
+* Booking Manager
+* Receptionist
+
+---
+
+## Platform Admin
+
+Manages the entire platform.
+
+Capabilities:
+
+* Manage tenants
+* Suspend tenants
+* Manage categories
+* Manage platform settings
+* Moderate content
+* Manage subscriptions
+* View system analytics
+
+---
+
+# 6. Tenant Roles
+
+```text
+OWNER
+ADMIN
+MANAGER
+STAFF
+```
+
+Future:
+
+```text
+CUSTOM_ROLE
+PERMISSION_GROUPS
+```
+
+---
+
+# 7. MVP Features
+
+# Authentication
+
+### Customer Registration
+
+* Email registration
+* Password login
+* JWT authentication
+
+### Vendor Registration
+
+* Create organization
+* Create tenant
+* Provision services
+
+### Login
+
+* JWT authentication
+* Refresh token rotation
+
+### Profile Management
+
+* Update profile
+* Change password
+* Logout
+
+---
+
+# Tenant Management
+
+### Create Organization
+
+```text
+Create Tenant
+Create Domain
+Create Membership
+Provision Services
+```
+
+### Manage Team Members
+
+Future:
+
+* Invite members
+* Remove members
+* Update roles
+
+---
+
+# Venue Management
+
+Tenant can:
+
+* Create venue
+* Edit venue
+* Delete venue
+* Upload images
+* Add amenities
+* Add policies
+* Set availability
+* Manage pricing
+
+---
+
+# Search and Discovery
 
 Customer can:
 
-- Register and login
-- Search venues
-- Filter by location, category, price, capacity, amenities, and availability
-- View venue details
-- Ask AI questions about venue policies
-- Request a booking
-- Track booking status
-- Cancel booking based on rules
-- Add reviews after completed bookings
+* Search by keyword
+* Search by city
+* Search by category
+* Search by price
+* Search by amenities
+* Search by capacity
+* Search by availability
 
-### 3.2 Vendor / Venue Owner
+---
 
-A vendor owns or manages one or more venues.
+# Booking System
+
+Customer can:
+
+* Check availability
+* Create booking request
+* View bookings
+* Cancel bookings
 
 Vendor can:
 
-- Register and login
-- Create venue listings
-- Upload venue images
-- Add venue description, capacity, price, amenities, and policies
-- Manage availability
-- View booking requests
-- Accept or reject bookings
-- View booking history
-- View business insights
-- Use AI to generate descriptions or understand performance
+* Accept booking
+* Reject booking
+* Manage bookings
 
-### 3.3 Admin
+---
 
-Admin manages platform operations.
+# Notifications
 
-Admin can:
+* Booking created
+* Booking accepted
+* Booking rejected
+* Venue approved
+* Booking reminders
 
-- Approve or reject vendors
-- Approve or reject venues
-- Suspend users or venues
-- Manage categories and amenities
-- View bookings
-- Handle complaints
-- Monitor platform activity
-- Use AI to summarize reports and detect unusual activity
+---
 
-## 4. MVP Scope
+# Admin Features
 
-The first version should focus only on the core booking marketplace.
+* Approve venues
+* Suspend venues
+* Suspend tenants
+* Manage categories
+* Manage amenities
+* Manage platform settings
 
-### MVP Features
+---
 
-#### Authentication
+# 8. Future Features
 
-- Customer registration
-- Vendor registration
-- Login
-- JWT authentication
-- Refresh token
-- Role-based access control
+## Payment System
 
-#### Venue Management
+* Stripe
+* Razorpay
+* Refunds
+* Invoices
 
-- Vendor can create venue
-- Vendor can update own venue
-- Vendor can upload venue images
-- Vendor can add amenities
-- Vendor can add policies
-- Admin can approve/reject venue
-- Customer can see only approved venues
+---
 
-#### Search and Discovery
+## Subscription System
 
-- List approved venues
-- Search by keyword
-- Filter by city/location
-- Filter by venue category
-- Filter by capacity
-- Filter by price range
-- Filter by amenities
+* Free Plan
+* Starter Plan
+* Business Plan
+* Enterprise Plan
 
-#### Booking
+---
 
-- Customer can check availability
-- Customer can create booking request
-- System must prevent double booking
-- Vendor can accept or reject booking
-- Customer can view booking status
-- Vendor can view booking requests
+## Reviews
 
-#### Notifications
+* Ratings
+* Reviews
+* Vendor responses
 
-- Booking request notification to vendor
-- Booking accepted/rejected notification to customer
-- Venue approval notification to vendor
+---
 
-#### Admin
+## Analytics
 
-- Admin can view users
-- Admin can approve vendors
-- Admin can approve venues
-- Admin can suspend venue
+* Booking analytics
+* Revenue analytics
+* Occupancy analytics
+* Customer analytics
 
-## 5. Future Scope
+---
 
-After the MVP is stable, add:
+## Calendar System
 
-- Payment gateway
-- Refund management
-- Vendor subscription plans
-- SaaS billing
-- Reviews and ratings
-- Advanced analytics
-- Calendar view
-- AI venue recommendation
-- RAG-based venue policy Q&A
-- Agentic AI booking assistant
-- WhatsApp/SMS notifications
-- Multi-location support
-- Team members for vendor accounts
+* Monthly calendar
+* Weekly calendar
+* Google Calendar integration
 
-## 6. Core Business Rules
+---
 
-1. Only approved venues should be visible to customers.
-2. A vendor can manage only their own venues.
-3. A customer cannot create/update venues.
-4. A vendor cannot access another vendor’s booking data.
-5. Admin can approve, reject, suspend, or restore venues.
-6. A booking cannot overlap with an existing confirmed/accepted booking.
-7. Availability must be checked in the backend before booking creation.
-8. AI can recommend venues, but cannot confirm bookings directly.
-9. Booking Service is the final source of truth for availability.
-10. Notifications should not block booking creation.
-11. Venue deletion should not be allowed if future accepted bookings exist.
-12. A booking status should follow a valid state transition.
+## Team Management
 
-## 7. Booking Statuses
+* Invitations
+* Permissions
+* Custom roles
 
-Initial statuses:
+---
 
-- `PENDING`
-- `ACCEPTED`
-- `REJECTED`
-- `CANCELLED`
-- `EXPIRED`
-- `COMPLETED`
+# 9. AI Features
 
-Future payment-related statuses:
+## AI Venue Recommendation
 
-- `PAYMENT_PENDING`
-- `PAID`
-- `PAYMENT_FAILED`
-- `REFUNDED`
-
-## 8. Booking State Transitions
-
-Allowed transitions:
+Example:
 
 ```text
-PENDING -> ACCEPTED
-PENDING -> REJECTED
-PENDING -> CANCELLED
-PENDING -> EXPIRED
-
-ACCEPTED -> COMPLETED
-ACCEPTED -> CANCELLED
-
-REJECTED -> final
-CANCELLED -> final
-EXPIRED -> final
-COMPLETED -> final
+Find an auditorium in Kochi for 500 people under ₹50,000.
 ```
 
-## 9. Non-Functional Requirements
+---
 
-### Security
+## AI Booking Assistant
 
-- JWT-based authentication
-- Role-based authorization
-- Service-to-service authentication
-- Input validation
-- Secure file upload
-- Environment variables for secrets
-- No hardcoded credentials
+Example:
 
-### Scalability
+```text
+Book me a football turf tomorrow evening.
+```
 
-- Microservice boundaries
-- Separate database ownership per service
-- API Gateway
-- Async notifications
-- Caching for read-heavy APIs
-- Pagination for list APIs
-- Database indexes on frequently queried fields
+---
 
-### Reliability
+## AI Policy Q&A
 
-- Booking conflict prevention
-- Database transactions for booking creation
-- Idempotent event handling
-- Retry support for background jobs
-- Structured logging
-- Error tracking later
+Example:
 
-### Performance
+```text
+Can I bring outside food?
+```
 
-- Paginated venue listing
-- Indexed search fields
-- Optimized queries
-- Cached venue details later
-- Async image upload processing later
+---
 
-### Maintainability
+## AI Description Generator
 
-- Clear service boundaries
-- API contracts
-- Separate settings for dev/staging/prod
-- Dockerized services
-- Clean documentation
-- Tests for critical business logic
+Example:
 
-## 10. Success Criteria for MVP
+```text
+Generate venue description.
+```
 
-The MVP is successful when:
+---
 
-- Customer can register/login.
-- Vendor can register/login.
-- Vendor can create venue.
-- Admin can approve venue.
-- Customer can search approved venues.
-- Customer can request booking.
-- System prevents overlapping bookings.
-- Vendor can accept/reject booking.
-- Notifications are triggered asynchronously.
+## AI Business Insights
+
+Example:
+
+```text
+Why are bookings down this month?
+```
+
+---
+
+## RAG Features
+
+Knowledge sources:
+
+* Venue policies
+* FAQs
+* Help center
+* Vendor documents
+* Booking policies
+
+---
+
+## Agentic AI
+
+Future:
+
+* Booking assistant
+* Recommendation workflows
+* Analytics agent
+* Customer support agent
+
+---
+
+# 10. Core Business Rules
+
+1. Users belong to one or more tenants.
+2. Tenant data must remain isolated.
+3. Users cannot access another tenant's data.
+4. Customers cannot modify venue information.
+5. Staff permissions are role based.
+6. Booking conflicts are not allowed.
+7. Availability must be validated in backend.
+8. AI cannot directly confirm bookings.
+9. Notifications should never block booking creation.
+10. Deleted entities should be soft deleted.
+
+---
+
+# 11. Booking Statuses
+
+```text
+PENDING
+ACCEPTED
+REJECTED
+CANCELLED
+COMPLETED
+EXPIRED
+```
+
+Future:
+
+```text
+PAYMENT_PENDING
+PAID
+REFUNDED
+PAYMENT_FAILED
+```
+
+---
+
+# 12. Booking State Machine
+
+```text
+PENDING
+    ├── ACCEPTED
+    ├── REJECTED
+    ├── CANCELLED
+    └── EXPIRED
+
+ACCEPTED
+    ├── COMPLETED
+    └── CANCELLED
+```
+
+---
+
+# 13. Non Functional Requirements
+
+## Security
+
+* JWT authentication
+* Role based permissions
+* Tenant isolation
+* Audit logging
+* Rate limiting
+* Secure uploads
+* Secrets management
+
+---
+
+## Scalability
+
+* Multi tenant architecture
+* PostgreSQL schema isolation
+* Service extraction ready
+* Horizontal scaling
+* Caching support
+* Queue support
+
+---
+
+## Reliability
+
+* Transactions
+* Idempotency
+* Retry mechanisms
+* Health checks
+* Monitoring
+
+---
+
+## Performance
+
+* Database indexing
+* Query optimization
+* Pagination
+* Async tasks
+* Redis caching
+
+---
+
+## Maintainability
+
+* Modular apps
+* Clean architecture
+* API documentation
+* Environment separation
+* Docker support
+* Automated testing
+
+---
+
+# 14. Success Metrics
+
+## Customer
+
+* Search venue
+* Create booking
+* View booking history
+
+## Vendor
+
+* Register organization
+* Create venue
+* Manage bookings
+
+## Admin
+
+* Manage platform
+* Moderate tenants
+* Manage categories
+
+---
+
+# 15. SaaS Roadmap
+
+## Phase 1
+
+Core Booking Platform.
+
+## Phase 2
+
+Payments and subscriptions.
+
+## Phase 3
+
+AI features.
+
+## Phase 4
+
+Analytics.
+
+## Phase 5
+
+Microservices extraction.
+
+## Phase 6
+
+Enterprise features.
+
+---
+
+# 16. Senior Level Engineering Goals
+
+The project should demonstrate:
+
+* Multi tenant SaaS architecture
+* Production grade authentication
+* PostgreSQL schema isolation
+* Clean architecture
+* Scalable API design
+* AI integration
+* Event driven architecture readiness
+* Cloud deployment readiness
+* Future microservices migration capability
