@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 
-from apps.tenants.models import (
+from apps.tenants.core.models import (
     ServiceRegistry,
     Tenant,
     TenantServiceProvision,
@@ -32,14 +32,6 @@ class Command(BaseCommand):
 
                 if created:
                     created_count += 1
-                    self.stdout.write(
-                        self.style.SUCCESS(
-                            f"Created provision: {tenant.name} -> {service.name}"
-                        )
-                    )
+                    self.stdout.write(self.style.SUCCESS(f"Created provision: {tenant.name} -> {service.name}"))
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Backfill completed. Created {created_count} provision records."
-            )
-        )
+        self.stdout.write(self.style.SUCCESS(f"Backfill completed. Created {created_count} provision records."))

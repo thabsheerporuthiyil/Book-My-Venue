@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import CustomerProfile, User
+from .core.models import CustomerProfile, User
 
 
 @admin.register(User)
@@ -34,7 +34,18 @@ class CustomUserAdmin(UserAdmin):
         (None, {"fields": ("email", "password")}),
         ("Personal Info", {"fields": ("full_name", "phone")}),
         ("Role", {"fields": ("global_role", "is_verified")}),
-        ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
+        (
+            "Permissions",
+            {
+                "fields": (
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                    "groups",
+                    "user_permissions",
+                )
+            },
+        ),
         ("Important Dates", {"fields": ("last_login", "date_joined")}),
     )
 

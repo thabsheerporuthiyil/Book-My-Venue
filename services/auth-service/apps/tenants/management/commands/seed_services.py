@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 
-from apps.tenants.models import ServiceRegistry
+from apps.tenants.core.models import ServiceRegistry
 
 
 class Command(BaseCommand):

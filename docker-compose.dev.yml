@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # Development overrides for Auth Service
+  # ==========================================
+  auth-service:
+    command: python manage.py runserver 0.0.0.0:8001
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.dev
+    volumes:
+      # Bind mount code for hot-reloading
+      - ./services/auth-service:/app
+    ports:
+      - "8001:8001"
+
+  # ==========================================
+  # Nginx development routing tweaks (if any)
+  # ==========================================
+  gateway:
+    environment:
+      - NGINX_ENV=development

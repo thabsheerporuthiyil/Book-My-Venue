@@ -21,7 +21,7 @@ The system allows venue owners to create their own organizations, manage venues,
 
 Customers can search venues, check availability, and make booking requests.
 
-The platform is designed to become a production grade SaaS product with AI capabilities and future microservices extraction.
+The platform is built as a production-grade SaaS product with a **microservices architecture** and AI capabilities.
 
 ---
 
@@ -541,29 +541,43 @@ ACCEPTED
 
 # 15. SaaS Roadmap
 
-## Phase 1
+## Phase 1 — Core Booking Platform *(Current)*
 
-Core Booking Platform.
+* Auth Service: User registration, login, JWT, tenant provisioning ✅
+* Venue Service: Venue CRUD, images, amenities, policies
+* Booking Service: Availability engine, booking state machine, conflict prevention
+* Notification Service: Email + in-app notifications via Celery
 
-## Phase 2
+## Phase 2 — Payments & Subscriptions
 
-Payments and subscriptions.
+* Stripe / Razorpay integration
+* Invoice generation
+* Refund handling
+* SaaS subscription plans (Free / Starter / Business / Enterprise)
 
-## Phase 3
+## Phase 3 — AI Features
 
-AI features.
+* Venue recommendation (natural language query → structured search)
+* RAG-based policy Q&A
+* AI venue description generator
+* AI business insights for vendors
+* Agentic booking assistant
 
-## Phase 4
+## Phase 4 — Analytics
 
-Analytics.
+* Booking analytics per tenant
+* Revenue analytics
+* Occupancy reports
+* Customer analytics
+* Platform-wide admin analytics
 
-## Phase 5
+## Phase 5 — Enterprise Features
 
-Microservices extraction.
-
-## Phase 6
-
-Enterprise features.
+* Team invitations and custom roles
+* White-label support
+* Custom domain provisioning
+* Advanced permission groups
+* Audit logs
 
 ---
 

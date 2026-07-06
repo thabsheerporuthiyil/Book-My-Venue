@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import (
+from apps.tenants.core.models import (
     ServiceRegistry,
     Tenant,
     TenantDomain,
@@ -11,9 +11,15 @@ from .models import (
 
 @admin.register(Tenant)
 class TenantAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "schema_name", "status", "contact_email", "created_at")
+    list_display = (
+        "name",
+        "slug",
+        "status",
+        "contact_email",
+        "created_at",
+    )
     list_filter = ("status",)
-    search_fields = ("name", "slug", "schema_name", "contact_email")
+    search_fields = ("name", "slug", "contact_email")
 
 
 @admin.register(TenantDomain)
@@ -44,6 +50,12 @@ class ServiceRegistryAdmin(admin.ModelAdmin):
 
 @admin.register(TenantServiceProvision)
 class TenantServiceProvisionAdmin(admin.ModelAdmin):
-    list_display = ("tenant", "service", "schema_name", "status", "provisioned_at", "updated_at")
+    list_display = (
+        "tenant",
+        "service",
+        "status",
+        "provisioned_at",
+        "updated_at",
+    )
     list_filter = ("service", "status")
-    search_fields = ("tenant__name", "service__name", "schema_name")
+    search_fields = ("tenant__name", "service__name")

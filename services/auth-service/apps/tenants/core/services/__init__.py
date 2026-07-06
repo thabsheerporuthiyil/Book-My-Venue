@@ -1,0 +1,1 @@
+from .provisioning import create_vendor_with_tenant

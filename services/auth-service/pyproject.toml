@@ -1,0 +1,37 @@
+[tool.ruff]
+# The industry standard line length for Django projects
+line-length = 120
+# Target your specific Python version
+target-version = "py312"
+# Directories to ignore completely
+exclude = [
+    ".venv",
+    ".git",
+    "__pycache__",
+    "migrations",
+]
+
+[tool.ruff.lint]
+# Enable specific rule sets
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort (automatically sorts your imports)
+    "DJ", # flake8-django (catches Django-specific bad practices)
+]
+ignore = []
+
+[tool.ruff.format]
+# Use double quotes for strings (the Black standard)
+quote-style = "double"
+# Indent with 4 spaces
+indent-style = "space"
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore 'imported but unused' in barrel files
+"__init__.py" = ["F401"]
+# Ignore 'unable to detect undefined names' for proxy models
+"apps/*/models.py" = ["F403"]
+# Ignore 'unable to detect undefined names' for split settings
+"config/settings/*.py" = ["F403", "F405"]

@@ -2,219 +2,199 @@
 
 # 1. Database Strategy
 
-Book My Venue uses:
+Book My Venue uses a **microservices** database architecture.
+
+Every service has its own isolated PostgreSQL database hosted on **Neon** (serverless Postgres).
+
+The auth-service uses **Row-Level Tenancy** (Shared Database, Shared Schema):
 
 ```text
-PostgreSQL
-django-tenants
-Schema Per Tenant Architecture
-```
-
-Current provider:
-
-```text
-Neon PostgreSQL
-```
-
-The system follows:
-
-```text
-Shared Database
-+
-Separate Schema Per Tenant
+All tenants share the same tables in a single public schema.
+Tenant isolation is enforced at the application level via
+foreign keys (tenant_id) and membership checks in the service layer.
 ```
 
 This gives:
 
-* Strong tenant isolation
-* Easier backups
-* Better security
-* Enterprise SaaS capabilities
-* Easier future microservice extraction
+* Uber/Airbnb-level scalability (supports 10,000+ tenants)
+* Standard Django ORM with no special database engine overrides
+* Independent scaling of each service's database
+* No cross-service database joins (services communicate via HTTP APIs)
+* Easier future migrations per service
 
 ---
 
-# 2. PostgreSQL Schema Layout
+# 2. Database Per Service
 
-## Public Schema
+| Service | Database | Hosting |
+|---------|----------|---------|
+| auth-service | `auth_db` | Neon PostgreSQL |
+| venue-service | `venue_db` | Neon PostgreSQL |
+| booking-service | `booking_db` | Neon PostgreSQL |
+| notification-service | `notification_db` | Neon PostgreSQL |
+| ai-service | `ai_db` | Neon PostgreSQL |
 
-The `public` schema stores shared data used across all tenants.
+---
+
+# 3. Auth Service — Database Layout
+
+All tables live in the `public` schema. There are no per-tenant schemas.
 
 ```text
 public
 │
-├── users
-├── customer_profiles
-├── tenants
-├── tenant_domains
-├── tenant_memberships
-├── service_registry
-├── tenant_service_provisions
+├── accounts_user
+├── accounts_customerprofile
+├── tenants_tenant
+├── tenants_tenantdomain
+├── tenants_tenantmembership
+├── tenants_serviceregistry
+├── tenants_tenantserviceprovision
+├── token_blacklist_outstandingtoken
+├── token_blacklist_blacklistedtoken
 ├── django_migrations
 ├── django_content_type
 ├── django_admin_log
 ├── django_session
-└── shared reference tables
+└── silk_* (dev profiling tables)
 ```
 
 ---
 
-## Tenant Schemas
+# 4. Tables (Public Schema — auth-service)
 
-Each tenant gets its own PostgreSQL schema.
+## 4.1 User (`accounts_user`)
 
-Example:
-
-```text
-tenant_abc_hall
-tenant_city_palace
-tenant_grand_convention
-tenant_green_auditorium
-```
-
-Each schema contains:
+Stores all platform users. Inherits from Django's `AbstractUser`.
 
 ```text
-venues
-venue_images
-amenities
-venue_policies
-bookings
-availability_rules
-blocked_slots
-notifications
-analytics
-```
-
----
-
-# 3. Shared Schema Tables (Public)
-
-# 3.1 User
-
-Stores all platform users.
-
-```text
-id UUID PK
-email VARCHAR UNIQUE
-password
-full_name
-phone
-global_role
-is_active
-is_verified
-last_login
-created_at
-updated_at
+id              UUID PK         auto-generated
+email           VARCHAR UNIQUE  login identifier (no username)
+password        VARCHAR
+full_name       VARCHAR(255)
+phone           VARCHAR(20)     optional
+global_role     VARCHAR(20)     USER | ADMIN
+is_active       BOOLEAN         default True
+is_verified     BOOLEAN         default False
+is_staff        BOOLEAN         default False (Django admin access)
+is_superuser    BOOLEAN         default False
+last_login      DATETIME        nullable
+date_joined     DATETIME        auto
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 Indexes:
 
 ```text
-email
+email (unique)
 global_role
 is_active
 ```
 
 ---
 
-# 3.2 CustomerProfile
+## 4.2 CustomerProfile (`accounts_customerprofile`)
 
 ```text
-id UUID PK
-user_id UUID FK
-profile_image nullable
-date_of_birth nullable
-created_at
-updated_at
+id              UUID PK
+user_id         UUID FK → accounts_user (OneToOne, CASCADE)
+profile_image   URLField        optional (Cloudinary URL)
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 Indexes:
 
 ```text
-user_id
+user_id (unique — from OneToOneField)
 ```
 
 ---
 
-# 3.3 Tenant
+## 4.3 Tenant (`tenants_tenant`)
 
 Represents a vendor organization.
 
 ```text
-id UUID PK
-name
-slug UNIQUE
-schema_name UNIQUE
-status
-contact_email
-contact_phone
-created_by UUID FK
-created_at
-updated_at
+id              UUID PK
+name            VARCHAR(255)
+slug            SlugField UNIQUE
+status          VARCHAR(20)         PENDING | ACTIVE | SUSPENDED | REJECTED
+contact_email   EmailField
+contact_phone   VARCHAR(20)         optional
+created_by      UUID FK → accounts_user (PROTECT)
+created_at      DATETIME            auto_now_add
+updated_at      DATETIME            auto_now
 ```
 
 Indexes:
 
 ```text
-slug
-schema_name
+slug (unique)
 status
 created_by
 ```
 
 ---
 
-# 3.4 TenantDomain
+## 4.4 TenantDomain (`tenants_tenantdomain`)
 
 Stores tenant domains.
 
 ```text
-id UUID PK
-tenant_id UUID FK
-domain UNIQUE
-is_primary
-created_at
-updated_at
+id              UUID PK
+tenant_id       UUID FK → tenants_tenant (CASCADE)
+domain          VARCHAR(255) UNIQUE     db_index=True
+is_primary      BOOLEAN                 default True
+created_at      DATETIME                auto_now_add
 ```
+
+> Note: `updated_at` is intentionally absent — domains are not updated, only replaced.
 
 Indexes:
 
 ```text
-domain
+domain (unique, db_index)
 tenant_id
 ```
 
 Examples:
 
 ```text
-grandhall.bookmyvenue.com
-citypalace.bookmyvenue.com
+grandhall.bookmyvenue.local
+citypalace.bookmyvenue.local
 ```
 
 ---
 
-# 3.5 TenantMembership
+## 4.5 TenantMembership (`tenants_tenantmembership`)
 
 Stores users belonging to tenants.
 
 ```text
-id UUID PK
-tenant_id UUID FK
-user_id UUID FK
-role
-is_active
-created_at
-updated_at
+id              UUID PK
+tenant_id       UUID FK → tenants_tenant (CASCADE)
+user_id         UUID FK → accounts_user (CASCADE)
+role            VARCHAR(20)     OWNER | MANAGER | STAFF
+is_active       BOOLEAN         default True
+created_at      DATETIME        auto_now_add
 ```
+
+> Note: `updated_at` is intentionally absent in current model. Memberships are created and toggled via `is_active`.
 
 Roles:
 
 ```text
-OWNER
-ADMIN
-MANAGER
-STAFF
+OWNER     — full tenant control
+MANAGER   — venue and booking management
+STAFF     — limited operational access
+```
+
+Unique constraint:
+
+```text
+(tenant_id, user_id)
 ```
 
 Indexes:
@@ -226,28 +206,25 @@ role
 is_active
 ```
 
-Unique constraint:
-
-```text
-tenant_id + user_id
-```
-
 ---
 
-# 3.6 ServiceRegistry
+## 4.6 ServiceRegistry (`tenants_serviceregistry`)
 
-Defines platform services.
+Defines platform services available for provisioning.
 
 ```text
-id UUID PK
-code UNIQUE
-name
-description
-is_active
-requires_tenant_provisioning
-created_at
-updated_at
+id                          UUID PK
+name                        VARCHAR(100) UNIQUE     service identifier (e.g. VENUES)
+display_name                VARCHAR(150)            human-readable name
+base_url                    URLField                optional service base URL
+requires_tenant_provisioning BOOLEAN                default True
+is_active                   BOOLEAN                 default True
+provision_endpoint          VARCHAR(255)            default /internal/tenants/provision/
+created_at                  DATETIME                auto_now_add
+updated_at                  DATETIME                auto_now
 ```
+
+Default ordering: `name` (alphabetical)
 
 Examples:
 
@@ -263,25 +240,31 @@ REVIEWS
 Indexes:
 
 ```text
-code
+name (unique)
 is_active
 ```
 
 ---
 
-# 3.7 TenantServiceProvision
+## 4.7 TenantServiceProvision (`tenants_tenantserviceprovision`)
 
-Stores services enabled for a tenant.
+Stores services provisioned for each tenant.
 
 ```text
-id UUID PK
-tenant_id UUID FK
-service_id UUID FK
-schema_name
-is_enabled
-provisioned_at
-created_at
-updated_at
+id              UUID PK
+tenant_id       UUID FK → tenants_tenant (CASCADE)
+service_id      UUID FK → tenants_serviceregistry (PROTECT)
+status          VARCHAR(20)     PENDING | CREATED | FAILED
+error_message   TextField       optional, populated on failure
+provisioned_at  DATETIME        nullable, set when status → CREATED
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
+```
+
+Unique constraint:
+
+```text
+(tenant_id, service_id)
 ```
 
 Indexes:
@@ -289,94 +272,88 @@ Indexes:
 ```text
 tenant_id
 service_id
-is_enabled
-```
-
-Unique constraint:
-
-```text
-tenant_id + service_id
+status
 ```
 
 ---
 
-# 4. Tenant Schema Tables
-
-The following tables exist inside every tenant schema.
+# 5. Venue Service Tables (`venue_db`)
 
 ---
 
-# 4.1 VenueCategory
+## 5.1 VenueCategory
 
 ```text
-id UUID PK
-name
-slug UNIQUE
-description
-is_active
-created_at
-updated_at
+id              UUID PK
+name            VARCHAR
+slug            SlugField UNIQUE
+description     TextField       optional
+is_active       BOOLEAN         default True
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 Indexes:
 
 ```text
-slug
+slug (unique)
 is_active
 ```
 
 ---
 
-# 4.2 Amenity
+## 5.2 Amenity
 
 ```text
-id UUID PK
-name
-slug UNIQUE
-icon nullable
-is_active
-created_at
-updated_at
+id              UUID PK
+name            VARCHAR
+slug            SlugField UNIQUE
+icon            VARCHAR         optional (icon class or URL)
+is_active       BOOLEAN         default True
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 Indexes:
 
 ```text
-slug
+slug (unique)
 is_active
 ```
 
 ---
 
-# 4.3 Venue
+## 5.3 Venue
 
 ```text
-id UUID PK
-vendor_id UUID
-category_id UUID
-name
-slug
-description
-address
-city
-state
-country
-postal_code
-latitude nullable
-longitude nullable
-capacity
-base_price
-price_type
-approval_status
-is_active
-created_at
-updated_at
+id              UUID PK
+vendor_id       UUID            references auth-service user (cross-service)
+tenant_id       UUID            references auth-service tenant (cross-service)
+category_id     UUID FK → VenueCategory
+name            VARCHAR
+slug            SlugField
+description     TextField
+address         VARCHAR
+city            VARCHAR
+state           VARCHAR
+country         VARCHAR
+postal_code     VARCHAR
+latitude        DECIMAL         nullable
+longitude       DECIMAL         nullable
+capacity        INTEGER
+base_price      DECIMAL(10,2)
+price_type      VARCHAR(20)     FULL_DAY | HALF_DAY | HOURLY
+approval_status VARCHAR(20)     PENDING_APPROVAL | APPROVED | REJECTED | SUSPENDED
+is_active       BOOLEAN         default True
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 Indexes:
 
 ```text
 vendor_id
+tenant_id
 category_id
 city
 capacity
@@ -395,18 +372,18 @@ Composite indexes:
 
 ---
 
-# 4.4 VenueImage
+## 5.4 VenueImage
 
 ```text
-id UUID PK
-venue_id UUID FK
-image_url
-public_id nullable
-caption nullable
-is_primary
-sort_order
-created_at
-updated_at
+id              UUID PK
+venue_id        UUID FK → Venue (CASCADE)
+image_url       URLField
+public_id       VARCHAR         optional (Cloudinary public_id)
+caption         VARCHAR         optional
+is_primary      BOOLEAN         default False
+sort_order      INTEGER         default 0
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 Indexes:
@@ -419,40 +396,33 @@ sort_order
 
 ---
 
-# 4.5 VenueAmenity
+## 5.5 VenueAmenity (join table)
 
 ```text
-id UUID PK
-venue_id UUID FK
-amenity_id UUID FK
-created_at
+id              UUID PK
+venue_id        UUID FK → Venue (CASCADE)
+amenity_id      UUID FK → Amenity (CASCADE)
+created_at      DATETIME        auto_now_add
 ```
 
 Unique constraint:
 
 ```text
-venue_id + amenity_id
-```
-
-Indexes:
-
-```text
-venue_id
-amenity_id
+(venue_id, amenity_id)
 ```
 
 ---
 
-# 4.6 VenuePolicy
+## 5.6 VenuePolicy
 
 ```text
-id UUID PK
-venue_id UUID FK
-title
-content
-policy_type
-created_at
-updated_at
+id              UUID PK
+venue_id        UUID FK → Venue (CASCADE)
+title           VARCHAR
+content         TextField
+policy_type     VARCHAR(20)     CANCELLATION | FOOD | DECORATION | GENERAL
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 Indexes:
@@ -464,21 +434,21 @@ policy_type
 
 ---
 
-# 5. Booking Tables
+# 6. Booking Service Tables (`booking_db`)
 
 ---
 
-# 5.1 AvailabilityRule
+## 6.1 AvailabilityRule
 
 ```text
-id UUID PK
-venue_id UUID
-day_of_week
-start_time
-end_time
-is_available
-created_at
-updated_at
+id              UUID PK
+venue_id        UUID            cross-service reference
+day_of_week     INTEGER         0=Monday ... 6=Sunday
+start_time      TIME
+end_time        TIME
+is_available    BOOLEAN         default True
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 Indexes:
@@ -490,17 +460,17 @@ day_of_week
 
 ---
 
-# 5.2 BlockedSlot
+## 6.2 BlockedSlot
 
 ```text
-id UUID PK
-venue_id UUID
-start_datetime
-end_datetime
-reason nullable
-created_by UUID
-created_at
-updated_at
+id              UUID PK
+venue_id        UUID            cross-service reference
+start_datetime  DATETIME
+end_datetime    DATETIME
+reason          VARCHAR         optional
+created_by      UUID            cross-service user reference
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 Indexes:
@@ -513,24 +483,25 @@ end_datetime
 
 ---
 
-# 5.3 Booking
+## 6.3 Booking
 
 ```text
-id UUID PK
-booking_reference UNIQUE
-venue_id UUID
-customer_id UUID
-vendor_id UUID
-start_datetime
-end_datetime
-guest_count
-status
-total_amount
-special_requests nullable
-rejection_reason nullable
-cancelled_reason nullable
-created_at
-updated_at
+id                  UUID PK
+booking_reference   VARCHAR UNIQUE      e.g. BMV-20260610-0001
+venue_id            UUID                cross-service reference
+customer_id         UUID                cross-service user reference
+vendor_id           UUID                cross-service user reference
+tenant_id           UUID                cross-service tenant reference
+start_datetime      DATETIME
+end_datetime        DATETIME
+guest_count         INTEGER
+status              VARCHAR(20)         PENDING | ACCEPTED | REJECTED | CANCELLED | COMPLETED | EXPIRED
+total_amount        DECIMAL(12,2)
+special_requests    TextField           optional
+rejection_reason    TextField           optional
+cancellation_reason TextField           optional
+created_at          DATETIME            auto_now_add
+updated_at          DATETIME            auto_now
 ```
 
 Indexes:
@@ -539,6 +510,7 @@ Indexes:
 venue_id
 customer_id
 vendor_id
+tenant_id
 status
 start_datetime
 end_datetime
@@ -554,16 +526,18 @@ Composite indexes:
 
 ---
 
-# 5.4 BookingStatusHistory
+## 6.4 BookingStatusHistory
+
+Audit trail for every booking status transition.
 
 ```text
-id UUID PK
-booking_id UUID
-old_status nullable
-new_status
-changed_by UUID
-reason nullable
-created_at
+id              UUID PK
+booking_id      UUID FK → Booking (CASCADE)
+old_status      VARCHAR(20)     nullable (null on creation)
+new_status      VARCHAR(20)
+changed_by      UUID            cross-service user reference
+reason          TextField       optional
+created_at      DATETIME        auto_now_add
 ```
 
 Indexes:
@@ -575,22 +549,22 @@ new_status
 
 ---
 
-# 6. Notification Tables
+# 7. Notification Service Tables (`notification_db`)
 
 ---
 
-# 6.1 Notification
+## 7.1 Notification
 
 ```text
-id UUID PK
-recipient_user_id UUID
-notification_type
-title
-message
-is_read
-metadata JSONB
-created_at
-read_at nullable
+id                  UUID PK
+recipient_user_id   UUID            cross-service user reference
+notification_type   VARCHAR(50)
+title               VARCHAR
+message             TextField
+is_read             BOOLEAN         default False
+metadata            JSONB           optional
+created_at          DATETIME        auto_now_add
+read_at             DATETIME        nullable
 ```
 
 Indexes:
@@ -603,40 +577,40 @@ notification_type
 
 ---
 
-# 6.2 NotificationTemplate
+## 7.2 NotificationTemplate
 
 ```text
-id UUID PK
-template_key UNIQUE
-subject
-body
-channel
-is_active
-created_at
-updated_at
+id              UUID PK
+template_key    VARCHAR UNIQUE
+subject         VARCHAR
+body            TextField
+channel         VARCHAR(20)     EMAIL | IN_APP | PUSH
+is_active       BOOLEAN         default True
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 Indexes:
 
 ```text
-template_key
+template_key (unique)
 channel
 is_active
 ```
 
 ---
 
-# 6.3 EmailLog
+## 7.3 EmailLog
 
 ```text
-id UUID PK
-recipient_email
-subject
-body
-status
-error_message nullable
-sent_at nullable
-created_at
+id              UUID PK
+recipient_email VARCHAR
+subject         VARCHAR
+body            TextField
+status          VARCHAR(20)     PENDING | SENT | FAILED
+error_message   TextField       optional
+sent_at         DATETIME        nullable
+created_at      DATETIME        auto_now_add
 ```
 
 Indexes:
@@ -648,91 +622,109 @@ status
 
 ---
 
-# 7. Future AI Tables
+# 8. AI Service Tables (`ai_db`)
 
 ---
 
-# 7.1 KnowledgeDocument
+## 8.1 KnowledgeDocument
 
 ```text
-id UUID PK
-source_type
-source_id
-title
-content
-metadata JSONB
-created_at
-updated_at
+id              UUID PK
+source_type     VARCHAR(50)     VENUE_POLICY | FAQ | HELP | VENDOR_DOC
+source_id       UUID
+title           VARCHAR
+content         TextField
+metadata        JSONB           optional
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 ---
 
-# 7.2 DocumentChunk
+## 8.2 DocumentChunk
 
 ```text
-id UUID PK
-document_id UUID
-chunk_text
-chunk_index
-metadata JSONB
-created_at
+id              UUID PK
+document_id     UUID FK → KnowledgeDocument (CASCADE)
+chunk_text      TextField
+chunk_index     INTEGER
+metadata        JSONB           optional
+created_at      DATETIME        auto_now_add
 ```
 
 ---
 
-# 7.3 EmbeddingRecord
+## 8.3 EmbeddingRecord
 
 ```text
-id UUID PK
-chunk_id UUID
-embedding VECTOR
-embedding_model
-created_at
+id              UUID PK
+chunk_id        UUID FK → DocumentChunk (CASCADE)
+embedding       VECTOR          pgvector column
+embedding_model VARCHAR(100)
+created_at      DATETIME        auto_now_add
 ```
 
 ---
 
-# 7.4 AIConversation
+## 8.4 AIConversation
 
 ```text
-id UUID PK
-user_id UUID
-session_title
-created_at
-updated_at
+id              UUID PK
+user_id         UUID            cross-service user reference
+session_title   VARCHAR         optional
+created_at      DATETIME        auto_now_add
+updated_at      DATETIME        auto_now
 ```
 
 ---
 
-# 7.5 AIMessage
+## 8.5 AIMessage
 
 ```text
-id UUID PK
-conversation_id UUID
-role
-content
-metadata JSONB
-created_at
+id                  UUID PK
+conversation_id     UUID FK → AIConversation (CASCADE)
+role                VARCHAR(20)     USER | ASSISTANT | SYSTEM
+content             TextField
+metadata            JSONB           optional
+created_at          DATETIME        auto_now_add
 ```
 
 ---
 
-# 7.6 AIToolCall
+## 8.6 AIToolCall
 
 ```text
-id UUID PK
-conversation_id UUID
-tool_name
-input_payload JSONB
-output_payload JSONB
-status
-error_message
-created_at
+id                  UUID PK
+conversation_id     UUID FK → AIConversation (CASCADE)
+tool_name           VARCHAR(100)
+input_payload       JSONB
+output_payload      JSONB
+status              VARCHAR(20)     PENDING | SUCCESS | FAILED
+error_message       TextField       optional
+created_at          DATETIME        auto_now_add
 ```
 
 ---
 
-# 8. Booking Conflict Rule
+# 9. Cross-Service Data References
+
+Services do NOT share databases. Cross-service references store only UUIDs:
+
+```text
+booking.venue_id     → calls venue-service internal API to validate
+booking.customer_id  → calls auth-service internal API to validate
+booking.tenant_id    → calls auth-service internal API to validate
+```
+
+Internal API calls are protected with:
+
+```http
+X-Internal-API-Key: <shared-secret>
+```
+
+---
+
+# 10. Booking Conflict Rule
 
 A booking conflicts when:
 
@@ -748,91 +740,82 @@ Blocking statuses:
 ACCEPTED
 ```
 
-Future:
+Future (with PENDING expiration support):
 
 ```text
 PENDING
 ACCEPTED
 ```
 
-with expiration support.
-
 ---
 
-# 9. Transaction Rules
+# 11. Transaction Rules
 
 The following operations must always be atomic:
 
 ```text
-Vendor Registration
-Tenant Provisioning
-Booking Creation
-Booking Acceptance
-Booking Cancellation
-Payment Processing
+Vendor Registration      → @transaction.atomic
+Tenant Provisioning      → @transaction.atomic
+Booking Creation         → @transaction.atomic + conflict recheck
+Booking Acceptance       → @transaction.atomic + availability recheck
+Booking Cancellation     → @transaction.atomic
+Payment Processing       → @transaction.atomic (future)
 ```
 
 Always use:
 
 ```python
-transaction.atomic()
+@transaction.atomic
+def service_function():
+    ...
 ```
 
 ---
 
-# 10. Soft Delete Strategy
+# 12. Soft Delete Strategy
 
 Do not hard delete:
 
 ```text
-Users
-Venues
-Bookings
-Tenants
+Users        → is_active = False
+Venues       → is_active = False, approval_status = SUSPENDED
+Bookings     → status = CANCELLED
+Tenants      → status = SUSPENDED
 ```
 
-Use:
-
-```text
-is_active
-status
-```
-
-instead.
+Never expose deleted records in public APIs.
 
 ---
 
-# 11. Audit Fields
+# 13. Audit Fields
 
-All important tables should contain:
+All important tables contain:
 
 ```text
-created_at
-updated_at
-created_by nullable
-updated_by nullable
+created_at    DATETIME    auto_now_add
+updated_at    DATETIME    auto_now (where applicable)
 ```
 
-Current MVP:
+Future:
 
 ```text
-created_at
-updated_at
+created_by    UUID        FK to user
+updated_by    UUID        FK to user
 ```
 
 ---
 
-# 12. Senior Level Database Principles
+# 14. Senior-Level Database Principles
 
-* UUID primary keys
-* Schema based tenant isolation
-* Proper indexing
-* Unique constraints
-* Composite indexes
-* Transactional writes
-* Soft deletion
-* JSONB for flexible metadata
-* Database level integrity
-* Future pgvector support
-* Production ready PostgreSQL design
-* Easy migration to microservices
+* UUID primary keys on every model
+* Schema-based tenant isolation (auth-service)
+* Database-per-service (microservices pattern)
+* Proper indexing on all query fields
+* Composite indexes for multi-column search queries
+* Unique constraints at the database level
+* Transactional writes for all multi-step operations
+* Soft deletion with `is_active` / `status` fields
+* JSONB for flexible metadata storage
+* pgvector for AI embedding storage (ai-service)
+* Cross-service references via UUID only (no foreign keys across services)
+* Internal HTTP APIs for cross-service data validation

@@ -9,21 +9,28 @@ Customer
 Register Page
     |
     v
-POST /api/v1/auth/register/customer/
+POST /api/auth/register/customer/
     |
     v
 Auth Service
     |
-    ├── Create User
-    ├── Create Customer Profile
-    └── Return Success
+    ├── Validate input (email unique check)
+    ├── Create User (global_role=USER, is_verified=False)
+    ├── Create CustomerProfile
+    └── Return user_id + email
 ```
 
 Response:
 
 ```json
 {
-  "message": "Registration successful."
+  "success": true,
+  "message": "Customer registered successfully.",
+  "data": {
+    "user_id": "uuid",
+    "email": "customer@example.com",
+    "global_role": "USER"
+  }
 }
 ```
 
@@ -38,17 +45,19 @@ Vendor
 Register Page
     |
     v
-POST /api/v1/auth/register/vendor/
+POST /api/auth/register/vendor/
 ```
 
-Auth Service performs:
+Auth Service performs (all in one `@transaction.atomic` block):
 
 ```text
-Create User
-Create Tenant
-Create Domain
-Create Tenant Membership
-Provision Services
+1. Validate email not already taken
+2. Validate domain not already taken
+3. Create User
+4. Create Tenant (status=PENDING)
+5. Create TenantMembership (role=OWNER)
+6. Create TenantDomain (is_primary=True)
+7. Bulk create TenantServiceProvision records for all active services
 ```
 
 Flow:
@@ -59,18 +68,26 @@ Vendor
     v
 Auth Service
     |
-    ├── User
-    ├── Tenant
-    ├── Domain
-    ├── Membership
-    └── Service Provisioning
+    ├── User created
+    ├── Tenant created (status=PENDING — awaits admin approval)
+    ├── Domain assigned (e.g. grand-hall.bookmyvenue.local)
+    ├── Membership created (role=OWNER)
+    └── Services provisioned (VENUES, BOOKINGS, NOTIFICATIONS, AI)
 ```
 
 Response:
 
 ```json
 {
-  "message": "Vendor registration successful."
+  "success": true,
+  "message": "Vendor registered successfully. Tenant is waiting for approval.",
+  "data": {
+    "user_id": "uuid",
+    "email": "vendor@example.com",
+    "tenant_id": "uuid",
+    "domain": "grand-hall.bookmyvenue.local",
+    "status": "PENDING"
+  }
 }
 ```
 
@@ -85,166 +102,296 @@ User
 Login Page
     |
     v
-POST /api/v1/auth/login/
+POST /api/auth/login/
 ```
 
 Auth Service:
 
 ```text
-Validate credentials
-Generate JWT tokens
-Return user information
+1. Check if account is locked (Redis-backed lockout tracker)
+2. Validate email + password credentials
+3. Record failed attempt on failure (locks after 5 attempts for 15 min)
+4. Check user.is_active
+5. Check user.is_verified (OTP must be completed)
+6. Clear lockout attempts on success
+7. Generate JWT Access Token + Refresh Token
+8. Set tokens as HttpOnly cookies on the response
+9. Return user info
 ```
 
 Response:
 
 ```json
 {
-  "access": "...",
-  "refresh": "...",
-  "user": {}
+  "success": true,
+  "message": "Login successful.",
+  "data": {
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "full_name": "User Name",
+      "global_role": "USER"
+    }
+  }
 }
 ```
 
----
-
-# 4. My Profile Flow
-
-```text
-Frontend
-    |
-Authorization: Bearer JWT
-    |
-    v
-GET /api/v1/auth/me/
-```
-
-Backend:
-
-```text
-Validate JWT
-Load User
-Return User Profile
-```
+> Tokens (`access_token`, `refresh_token`) are set as HttpOnly cookies.
+> They are NOT returned in the JSON body.
 
 ---
 
-# 5. Tenant Selection Flow
-
-A user may belong to multiple organizations.
+# 4. Token Refresh Flow
 
 ```text
-User
+Frontend (access token expired — 401 response)
     |
     v
-GET /api/v1/tenants/my-tenants/
+POST /api/auth/refresh/
+
+Refresh token is automatically sent via HttpOnly cookie.
+    |
+    v
+Auth Service
+    |
+    ├── Validate refresh token
+    ├── Blacklist old refresh token (rotation)
+    ├── Issue new access + refresh token pair
+    └── Set new tokens as HttpOnly cookies
 ```
 
 Response:
 
 ```json
-[
-  {
-    "tenant_id": "",
-    "name": "",
-    "role": "OWNER"
-  }
-]
+{
+  "success": true,
+  "message": "Token refreshed."
+}
 ```
 
-User selects a tenant.
+> New cookies are set on the response. Old refresh token is permanently blacklisted.
+
+---
+
+# 5. OTP Verification Flow
+
+```text
+User (after registration)
+    |
+    v
+POST /api/auth/verify-otp/
+Body: { "email": "...", "otp": "123456" }
+    |
+    v
+Auth Service
+    |
+    ├── Validate OTP from Redis cache
+    ├── Set user.is_verified = True
+    └── Delete OTP from Redis
+```
+
+If OTP expired or user needs a new one:
+
+```text
+POST /api/auth/resend-otp/
+Body: { "email": "..." }
+    |
+    v
+Auth Service
+    |
+    ├── Generate new 6-digit OTP
+    ├── Store in Redis with TTL
+    └── Send via email (best-effort)
+```
+
+---
+
+# 6. My Profile Flow
+
+```text
+Frontend
+    |
+access_token sent via HttpOnly cookie (automatic)
+    |
+    v
+GET /api/auth/me/
+    |
+    v
+Auth Service
+    |
+    ├── Validate JWT from cookie (or Authorization header)
+    ├── Load User from token's user_id
+    └── Return user profile
+```
+
+---
+
+# 7. Logout Flow
+
+```text
+User clicks "Logout"
+    |
+    v
+POST /api/auth/logout/
+Body: { "all_devices": false }
+    |
+    v
+Auth Service
+    |
+    ├── Read refresh token from cookie
+    ├── Blacklist the refresh token
+    └── Delete access_token and refresh_token cookies
+```
+
+For "Logout All Devices":
+
+```text
+POST /api/auth/logout/
+Body: { "all_devices": true }
+    |
+    v
+Auth Service
+    |
+    ├── Query all OutstandingTokens for the user
+    ├── Bulk blacklist all tokens
+    └── Delete cookies
+```
+
+---
+
+# 8. Password Change Flow
+
+```text
+User
+    |
+    v
+POST /api/auth/change-password/
+Body: { "current_password": "...", "new_password": "..." }
+    |
+    v
+Auth Service
+    |
+    ├── Validate current password
+    ├── Validate new password ≠ current password
+    ├── Update password hash
+    ├── Blacklist ALL outstanding tokens (terminates all sessions)
+    └── Delete cookies from response
+```
+
+> This ensures that if an account is compromised and the user changes
+> their password, the attacker is instantly kicked off all devices.
+
+---
+
+# 9. Tenant Selection Flow
+
+A user (vendor/staff) may belong to multiple organizations.
+
+```text
+Frontend (after login)
+    |
+    v
+GET /api/auth/tenants/my-tenants/
+access_token sent via HttpOnly cookie (automatic)
+    |
+    v
+Auth Service
+    |
+    └── Return list of tenant memberships for this user
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "tenant_id": "uuid",
+      "tenant_name": "Grand Hall Events",
+      "role": "OWNER",
+      "status": "ACTIVE"
+    }
+  ]
+}
+```
 
 Frontend stores:
 
 ```text
-selectedTenantId
+selectedTenantId → in localStorage / Zustand / Redux
 ```
 
 ---
 
-# 6. Authenticated Request Flow
+# 7. Authenticated Request Flow
 
-```text
-Frontend
-    |
-Authorization: Bearer JWT
-X-Tenant-Id: tenant_uuid
-    |
-    v
-API
-```
-
-Every protected request contains:
+Every request to a protected vendor/staff API must include:
 
 ```http
-Authorization: Bearer <token>
+Authorization: Bearer <access_token>
 X-Tenant-Id: <tenant_uuid>
 ```
 
+Services call auth-service's internal validate-context endpoint before processing:
+
+```text
+POST /internal/auth/validate-context/
+X-Internal-API-Key: <shared-secret>
+
+{
+  "access_token": "<jwt>",
+  "tenant_id": "<tenant_uuid>"
+}
+```
+
+Auth service returns validated user + tenant context:
+
+```json
+{
+  "valid": true,
+  "user": {
+    "id": "uuid",
+    "email": "vendor@example.com",
+    "global_role": "USER"
+  },
+  "tenant": {
+    "id": "uuid",
+    "role": "OWNER"
+  }
+}
+```
+
 ---
 
-# 7. Request Validation Flow
+# 8. Internal Context Validation Flow
 
 ```text
-Frontend
-      |
-      | Authorization: Bearer JWT
-      | X-Tenant-Id
-      |
-      v
-API Gateway
-      |
-      ├── Validate JWT
-      ├── Verify Membership
-      ├── Add Internal Headers
-      |
-      v
-Application Service
+Incoming Request to any service
+       |
+       | Authorization: Bearer JWT
+       | X-Tenant-Id: tenant_uuid
+       |
+       v
+Service (venue-service, booking-service, etc.)
+       |
+       v
+Call POST /internal/auth/validate-context/
+X-Internal-API-Key: <key>
+       |
+       v
+Auth Service validates:
+   ├── JWT is valid
+   ├── User exists and is_active=True
+   ├── User has active membership in tenant
+   └── Tenant status is ACTIVE
+       |
+       v
+Returns: user_id, global_role, tenant_id, role
+       |
+       v
+Service proceeds with request
 ```
-
-Internal headers:
-
-```text
-X-User-Id
-X-Tenant-Id
-X-Role
-```
-
----
-
-# 8. Tenant Resolution Flow
-
-Request:
-
-```http
-Authorization: Bearer xxx
-X-Tenant-Id: tenant_uuid
-```
-
-Backend:
-
-```text
-JWT Authentication
-        |
-        v
-Tenant Middleware
-        |
-        v
-Find Membership
-        |
-        v
-Set Current Tenant
-```
-
-Then:
-
-```python
-request.tenant
-request.tenant_membership
-request.role
-```
-
-become available.
 
 ---
 
@@ -254,34 +401,30 @@ become available.
 Tenant Owner
       |
       v
-Create Venue
+POST /api/venues/
+Authorization: Bearer JWT
+X-Tenant-Id: <tenant_uuid>
       |
       v
-POST /api/v1/venues/
-```
-
-Backend:
-
-```text
-Validate JWT
-Validate Tenant
-Validate Role
-Create Venue
-```
-
-Database:
-
-```text
-tenant_schema.venues
+Venue Service
+      |
+      ├── Validate JWT + Tenant via auth-service
+      ├── Check role (OWNER or MANAGER)
+      ├── Create Venue (approval_status=PENDING_APPROVAL)
+      └── Return venue data
 ```
 
 Response:
 
 ```json
 {
-  "id": "",
-  "name": "",
-  "status": "DRAFT"
+  "success": true,
+  "message": "Venue created and submitted for approval.",
+  "data": {
+    "id": "uuid",
+    "name": "Grand Hall Auditorium",
+    "approval_status": "PENDING_APPROVAL"
+  }
 }
 ```
 
@@ -290,339 +433,387 @@ Response:
 # 10. Venue Update Flow
 
 ```text
-Tenant Owner
+Tenant Owner / Manager
       |
       v
-PATCH /api/v1/venues/{id}/
-```
-
-Backend:
-
-```text
-Check Ownership
-Check Role
-Update Venue
+PATCH /api/venues/{venue_id}/
+Authorization: Bearer JWT
+X-Tenant-Id: <tenant_uuid>
+      |
+      v
+Venue Service
+      |
+      ├── Validate JWT + Tenant
+      ├── Check role (OWNER or MANAGER)
+      ├── Check ownership (venue belongs to this tenant)
+      └── Update Venue
 ```
 
 ---
 
-# 11. Venue Listing Flow
+# 11. Admin Venue Approval Flow
 
 ```text
-Customer
+Platform Admin
       |
       v
-GET /api/v1/public/venues/
-```
-
-Filters:
-
-* city
-* category
-* capacity
-* price
-* amenities
-
-Response:
-
-```json
-{
-  "count": 100,
-  "results": []
-}
+PATCH /api/venues/{venue_id}/approval/
+Authorization: Bearer JWT (global_role=ADMIN)
+      |
+      v
+Venue Service
+      |
+      ├── Validate JWT
+      ├── Check global_role == ADMIN
+      ├── Update approval_status → APPROVED | REJECTED | SUSPENDED
+      └── Trigger notification to vendor
 ```
 
 ---
 
-# 12. Venue Detail Flow
+# 12. Venue Listing Flow (Public)
 
 ```text
-Customer
+Customer (no auth required)
       |
       v
-GET /api/v1/public/venues/{id}/
-```
-
-Returns:
-
-* venue details
-* images
-* amenities
-* policies
-* pricing
-
----
-
-# 13. Booking Creation Flow
-
-```text
-Customer
+GET /api/venues/?city=Calicut&category=auditorium&capacity_min=300
       |
       v
-POST /api/v1/bookings/
-```
-
-Backend:
-
-```text
-Validate JWT
-Validate Tenant
-Validate Venue
-Check Availability
-Create Booking
+Venue Service
+      |
+      ├── Filter: approval_status=APPROVED, is_active=True
+      ├── Apply query filters (city, category, price, capacity, amenities)
+      ├── Paginate results
+      └── Return list
 ```
 
 Response:
 
 ```json
 {
-  "booking_reference": "BMV123456",
-  "status": "PENDING"
+  "success": true,
+  "data": {
+    "count": 12,
+    "next": "/api/venues/?page=2",
+    "previous": null,
+    "results": []
+  }
 }
 ```
 
 ---
 
-# 14. Booking Conflict Flow
+# 13. Venue Detail Flow
 
 ```text
-Customer A
-Customer B
+Customer
       |
       v
-Book Same Slot
+GET /api/venues/{venue_id}/
+      |
+      v
+Venue Service
+      |
+      └── Return: details + images + amenities + policies + pricing
 ```
 
-System checks:
+---
+
+# 14. Booking Creation Flow
 
 ```text
-existing_start < new_end
-AND
-existing_end > new_start
+Customer
+      |
+      v
+POST /api/bookings/
+Authorization: Bearer JWT
+      |
+      v
+Booking Service
+      |
+      ├── Validate JWT via auth-service
+      ├── Validate venue via venue-service internal API
+      │     (check approval_status=APPROVED, is_active=True)
+      ├── Check availability (conflict detection query)
+      ├── Create Booking (status=PENDING)
+      ├── Create BookingStatusHistory entry
+      └── Trigger notification event (async)
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "message": "Booking request created successfully.",
+  "data": {
+    "id": "uuid",
+    "booking_reference": "BMV-20260610-0001",
+    "status": "PENDING"
+  }
+}
+```
+
+---
+
+# 15. Booking Conflict Flow
+
+```text
+Customer A and Customer B attempt to book the same slot
+      |
+      v
+Booking Service checks:
+
+  existing_start < new_end
+  AND
+  existing_end > new_start
+  AND
+  existing_status IN (ACCEPTED)
 ```
 
 If conflict:
 
 ```json
 {
-  "message": "Selected slot is unavailable."
+  "success": false,
+  "message": "Selected slot is not available.",
+  "errors": {
+    "time_slot": "This venue already has a booking in the selected time range."
+  }
 }
 ```
 
 ---
 
-# 15. Vendor Accept Booking Flow
+# 16. Vendor Accept Booking Flow
 
 ```text
 Vendor
       |
       v
-PATCH /api/v1/bookings/{id}/accept/
-```
-
-Backend:
-
-```text
-Validate Role
-Verify Ownership
-Recheck Availability
-Update Status
-```
-
-Status:
-
-```text
-PENDING -> ACCEPTED
-```
-
----
-
-# 16. Vendor Reject Booking Flow
-
-```text
-PATCH /api/v1/bookings/{id}/reject/
-```
-
-Status:
-
-```text
-PENDING -> REJECTED
+PATCH /api/bookings/{booking_id}/accept/
+Authorization: Bearer JWT
+X-Tenant-Id: <tenant_uuid>
+      |
+      v
+Booking Service
+      |
+      ├── Validate JWT + Tenant
+      ├── Check role (OWNER or MANAGER)
+      ├── Verify venue ownership
+      ├── Recheck availability (prevents race conditions)
+      ├── Update status: PENDING → ACCEPTED
+      ├── Create BookingStatusHistory entry
+      └── Trigger notification to customer
 ```
 
 ---
 
-# 17. Customer Cancel Booking Flow
+# 17. Vendor Reject Booking Flow
 
 ```text
-PATCH /api/v1/bookings/{id}/cancel/
-```
+PATCH /api/bookings/{booking_id}/reject/
+Authorization: Bearer JWT
+X-Tenant-Id: <tenant_uuid>
 
-Status:
-
-```text
-PENDING -> CANCELLED
-ACCEPTED -> CANCELLED
+Body: { "reason": "Venue not available due to maintenance." }
+      |
+      v
+Status: PENDING → REJECTED
 ```
 
 ---
 
-# 18. Notification Flow
+# 18. Customer Cancel Booking Flow
 
 ```text
-Booking Created
+PATCH /api/bookings/{booking_id}/cancel/
+Authorization: Bearer JWT
+      |
+      v
+Booking Service
+      |
+      ├── Validate JWT
+      ├── Verify customer owns this booking
+      ├── Check cancellable statuses (PENDING or ACCEPTED)
+      └── Update status → CANCELLED
+```
+
+Status transitions:
+
+```text
+PENDING  → CANCELLED
+ACCEPTED → CANCELLED
+```
+
+---
+
+# 19. Notification Flow
+
+```text
+Booking Event (created / accepted / rejected / cancelled)
        |
        v
-Event
+Booking Service emits notification task (Celery)
        |
        v
-Notification Service
-       |
-       ├── Email
-       ├── In App Notification
-       └── Push Notification
+Notification Service processes:
+       ├── Load NotificationTemplate
+       ├── Create Notification record (in-app)
+       ├── Send Email via email provider
+       └── Log to EmailLog
 ```
 
-Notification failure should not affect booking creation.
+> Notification failure **must not** roll back the booking transaction.
+> The notification task runs asynchronously via Celery.
 
 ---
 
-# 19. Tenant Invitation Flow (Future)
+# 20. Tenant Invitation Flow (Future)
 
 ```text
 Owner
      |
      v
-Invite Member
+POST /api/auth/tenants/{tenant_id}/invite/
      |
      v
-Email Invitation
+Auth Service
+     |
+     ├── Validate owner role
+     ├── Create pending invitation record
+     ├── Send invitation email
+     └── Invitation link: /accept-invite?token=...
+
+Invitee accepts:
      |
      v
-Accept Invitation
+POST /api/auth/tenants/accept-invite/
      |
      v
-Membership Created
+TenantMembership created with specified role
 ```
 
 ---
 
-# 20. AI Recommendation Flow (Future)
+# 21. AI Recommendation Flow (Future)
 
 ```text
-User:
-"I need an auditorium in Kochi for 500 people."
+User: "I need an auditorium in Kochi for 500 people under ₹80,000."
+      |
+      v
+POST /api/ai/recommend-venues/
+Authorization: Bearer JWT
+      |
+      v
+AI Service (FastAPI)
+      |
+      ├── Parse natural language query (LLM)
+      ├── Extract filters: city, capacity_min, price_max, amenities
+      ├── Call venue-service internal API with filters
+      ├── Rank results with LLM reasoning
+      └── Return recommendations with explanation
 ```
 
-Flow:
+---
+
+# 22. RAG Policy Q&A Flow (Future)
 
 ```text
-User
-   |
-   v
+User: "Can I bring outside food?"
+      |
+      v
+POST /api/ai/venue-policy-question/
+
+Body: { "venue_id": "uuid", "question": "Can I bring outside food?" }
+      |
+      v
 AI Service
-   |
-   ├── Extract Requirements
-   ├── Search Venues
-   ├── Rank Results
-   └── Return Recommendations
+      |
+      ├── Fetch venue policy chunks from vector store
+      ├── Retrieve most relevant chunks (semantic search)
+      ├── Pass chunks + question to LLM
+      └── Return generated answer + source references
 ```
 
 ---
 
-# 21. RAG Policy Q&A Flow (Future)
-
-```text
-User:
-"Can I bring outside food?"
-```
-
-Flow:
+# 23. AI Booking Assistant Flow (Future)
 
 ```text
 User
    |
    v
-AI Service
+AI Assistant chat
    |
-   ├── Retrieve Policy Chunks
-   ├── Generate Answer
-   └── Return Response
-```
-
----
-
-# 22. AI Booking Assistant Flow (Future)
-
-```text
-User
-   |
-   v
-AI Assistant
-   |
-   ├── Search Venues
-   ├── Check Availability
+   ├── Search Venues (calls venue-service)
+   ├── Check Availability (calls booking-service)
    ├── Suggest Options
-   └── Create Booking Draft
+   └── Create Booking Draft (user confirms)
 ```
 
-Important:
-
-```text
-AI never confirms bookings directly.
-Booking Service remains the source of truth.
-```
+> AI **never** confirms bookings directly.
+> The Booking Service remains the single source of truth.
 
 ---
 
-# 23. Failure Flow: AI Service Down
+# 24. Failure Flow: AI Service Down
 
 ```text
 AI Service Unavailable
         |
         v
-Normal Booking Flow Continues
+Normal Booking Flow Continues Unaffected
+        |
+        v
+AI features degrade gracefully — no impact on core booking
 ```
 
 ---
 
-# 24. Failure Flow: Notification Service Down
+# 25. Failure Flow: Notification Service Down
 
 ```text
-Booking Created
+Booking Created Successfully
       |
-Notification Failed
+Celery task queued for notification
       |
-Retry Later
+Notification Service unavailable
+      |
+Celery retries with exponential backoff
+      |
+Booking is NOT rolled back
 ```
-
-Booking should never be rolled back.
 
 ---
 
-# 25. Future Microservice Extraction Flow
+# 26. Microservices Communication Flow
 
-Current:
-
-```text
-Django Modular Monolith
-```
-
-Future:
+All services follow this pattern for inter-service calls:
 
 ```text
-Auth Service
-Venue Service
-Booking Service
-Notification Service
-AI Service
+Service A
+    |
+    v
+HTTP POST to Service B internal endpoint
+Headers:
+    X-Internal-API-Key: <shared-secret>
+    Content-Type: application/json
+    |
+    v
+Service B validates API key
+    |
+    v
+Returns validated data
 ```
 
-Communication:
+Services:
 
 ```text
-REST
-Events
-Queues
+auth-service        → provides user + tenant validation
+venue-service       → provides venue validation for bookings
+booking-service     → provides booking data for notifications
+notification-service → consumes events from booking/venue services
+ai-service          → calls venue-service and booking-service for data
 ```
-
-The current architecture is designed so that each module can be extracted into independent services with minimal refactoring.

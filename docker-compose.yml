@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # Nginx API Gateway
+  # ==========================================
+  gateway:
+    build:
+      context: ./gateway/nginx
+      dockerfile: Dockerfile
+    container_name: bmv-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+    networks:
+      - bmv-network
+    restart: unless-stopped
+
+  # ==========================================
+  # Auth Microservice (Django/DRF)
+  # ==========================================
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: bmv-auth-service
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.prod
+      - DJANGO_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-dev-secret-key-321-replace-me-in-prod}
+      - DATABASE_URL=${DATABASE_URL}
+      - INTERNAL_SERVICE_API_KEY=${INTERNAL_SERVICE_API_KEY:-dev-internal-api-key}
+      - ALLOWED_HOSTS=auth-service,localhost,127.0.0.1,gateway
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000
+    depends_on:
+      - redis
+    networks:
+      - bmv-network
+    restart: unless-stopped
+
+
+
+  # ==========================================
+  # Auth Service Background Worker (Celery)
+  # ==========================================
+  auth-service-celery:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: bmv-auth-service-celery
+    command: celery -A config worker --loglevel=info
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.prod
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/0
+      # (Add SMTP config env vars here via a .env file later for prod)
+    depends_on:
+      - redis
+      - auth-service
+    networks:
+      - bmv-network
+    restart: unless-stopped
+
+  # ==========================================
+  # Redis Cache & Message Broker
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: bmv-redis
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - bmv-network
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  bmv-network:
+    name: bmv-network
+    driver: bridge

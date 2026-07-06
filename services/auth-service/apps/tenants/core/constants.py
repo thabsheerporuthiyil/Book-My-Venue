@@ -1,0 +1,1 @@
+DEFAULT_TENANT_DOMAIN = "bookmyvenue.local"
