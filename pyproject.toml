@@ -49,3 +49,6 @@ line-ending = "auto"
 "apps/*/models.py" = ["F403"]
 # Ignore 'unable to detect undefined names' for split settings
 "config/settings/*.py" = ["F403", "F405"]
+
+[tool.uv.workspace]
+members = ["services/*", "libraries/*"]
