@@ -56,7 +56,7 @@ jobs:
           REDIS_URL: "redis://localhost:6379/0"
         run: |
           cd services/venue-service
-          uv run pytest
+          .venv/bin/pytest
 
   # ==========================================
   # 3. Auth Service Tests
@@ -89,4 +89,4 @@ jobs:
           REDIS_URL: "redis://localhost:6379/0"
         run: |
           cd services/auth-service
-          uv run pytest
+          .venv/bin/pytest
