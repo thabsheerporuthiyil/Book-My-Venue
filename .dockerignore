@@ -1,0 +1,12 @@
+.git/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+frontend/node_modules/
+gateway/nginx/logs/
+postgres_data/
+redis_data/

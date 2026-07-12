@@ -319,9 +319,11 @@ Response `200`:
 ```json
 {
   "success": true,
-  "message": "OTP sent successfully."
+  "message": "If the account exists and is unverified, an OTP has been sent."
 }
 ```
+
+> **Security Note:** This endpoint always returns a 200 OK (even if the user doesn't exist or is already verified) to prevent **Email Enumeration Attacks**. Rate limiting is also applied specifically to this endpoint (`resend_otp` scope: 3/minute).
 
 ---
 
@@ -413,7 +415,67 @@ Response `200`:
 
 ---
 
-### 3.6 Get My Tenants
+### 3.10 Forgot Password
+
+```http
+POST /api/auth/forgot-password/
+```
+
+Auth: None required
+
+Request:
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "If the account exists, a password reset email has been sent."
+}
+```
+
+> **Security Note:** This endpoint fails silently and always returns 200 OK to prevent email enumeration.
+
+---
+
+### 3.11 Reset Password
+
+```http
+POST /api/auth/reset-password/
+```
+
+Auth: None required
+
+Request:
+
+```json
+{
+  "email": "user@example.com",
+  "otp": "123456",
+  "new_password": "NewStrongPassword123"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Password successfully reset. Please log in with your new password."
+}
+```
+
+> **Security Note:** All existing sessions across all devices for this user will be instantly terminated.
+
+---
+
+### 3.12 Get My Tenants
 
 ```http
 GET /api/auth/tenants/my-tenants/

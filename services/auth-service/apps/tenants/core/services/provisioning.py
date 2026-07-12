@@ -9,6 +9,7 @@ from apps.tenants.core.models import (
     TenantServiceProvision,
 )
 from apps.tenants.core.selectors import get_active_provision_services
+from apps.tenants.tasks import dispatch_tenant_provisioning
 
 User = get_user_model()
 
@@ -39,6 +40,13 @@ def create_vendor_with_tenant(validated_data):
 
     services = get_active_provision_services()
     provisions = [TenantServiceProvision(tenant=tenant, service=service) for service in services]
-    TenantServiceProvision.objects.bulk_create(provisions)
+
+    # Bulk create the records
+    created_provisions = TenantServiceProvision.objects.bulk_create(provisions)
+
+    # Dispatch Celery task for each provision to hit the downstream microservices via HTTP
+    # transaction.on_commit ensures tasks are only dispatched if the DB transaction succeeds
+    for provision in created_provisions:
+        transaction.on_commit(lambda p_id=provision.id: dispatch_tenant_provisioning.delay(str(p_id)))
 
     return user, tenant

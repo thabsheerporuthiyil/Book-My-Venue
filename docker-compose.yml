@@ -1,4 +1,23 @@
-version: '3.8'
+# ==========================================
+# Shared Configurations (DRY)
+# ==========================================
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+x-auth-env: &auth-env
+  DJANGO_SETTINGS_MODULE: config.settings.prod
+  REDIS_URL: redis://redis:6379/0
+  ALLOWED_HOSTS: auth-service,localhost,127.0.0.1,gateway
+  CORS_ALLOWED_ORIGINS: http://localhost:3000
+
+x-venue-env: &venue-env
+  DJANGO_SETTINGS_MODULE: config.settings.prod
+  REDIS_URL: redis://redis:6379/0
+  ALLOWED_HOSTS: venue-service,localhost,127.0.0.1,gateway
+  CORS_ALLOWED_ORIGINS: http://localhost:3000
 
 services:
   # ==========================================
@@ -9,10 +28,12 @@ services:
       context: ./gateway/nginx
       dockerfile: Dockerfile
     container_name: bmv-gateway
+    profiles: ["infra"]
     ports:
       - "8080:8080"
     depends_on:
       - auth-service
+    logging: *default-logging
     networks:
       - bmv-network
     restart: unless-stopped
@@ -25,20 +46,53 @@ services:
       context: ./services/auth-service
       dockerfile: Dockerfile
     container_name: bmv-auth-service
+    profiles: ["auth"]
+    env_file:
+      - ./services/auth-service/.env
     environment:
-      - DJANGO_SETTINGS_MODULE=config.settings.prod
-      - DJANGO_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-dev-secret-key-321-replace-me-in-prod}
-      - DATABASE_URL=${DATABASE_URL}
-      - INTERNAL_SERVICE_API_KEY=${INTERNAL_SERVICE_API_KEY:-dev-internal-api-key}
-      - ALLOWED_HOSTS=auth-service,localhost,127.0.0.1,gateway
-      - CORS_ALLOWED_ORIGINS=http://localhost:3000
+      <<: *auth-env
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    volumes:
+      - static_volume:/app/staticfiles
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     networks:
       - bmv-network
     restart: unless-stopped
 
-
+  # ==========================================
+  # Venue Microservice (Django/DRF)
+  # ==========================================
+  venue-service:
+    build:
+      context: .
+      dockerfile: ./services/venue-service/Dockerfile
+    container_name: bmv-venue-service
+    profiles: ["venue"]
+    env_file:
+      - ./services/venue-service/.env
+    environment:
+      <<: *venue-env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - venue_static_volume:/app/staticfiles
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    networks:
+      - bmv-network
+    restart: unless-stopped
 
   # ==========================================
   # Auth Service Background Worker (Celery)
@@ -48,19 +102,65 @@ services:
       context: ./services/auth-service
       dockerfile: Dockerfile
     container_name: bmv-auth-service-celery
+    profiles: ["workers"]
     command: celery -A config worker --loglevel=info
+    env_file:
+      - ./services/auth-service/.env
     environment:
-      - DJANGO_SETTINGS_MODULE=config.settings.prod
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=redis://redis:6379/0
-      # (Add SMTP config env vars here via a .env file later for prod)
+      <<: *auth-env
     depends_on:
-      - redis
-      - auth-service
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     networks:
       - bmv-network
     restart: unless-stopped
 
+  # ==========================================
+  # Venue Service Background Worker (Celery)
+  # ==========================================
+  venue-service-celery:
+    build:
+      context: .
+      dockerfile: ./services/venue-service/Dockerfile
+    container_name: bmv-venue-service-celery
+    profiles: ["workers"]
+    command: celery -A config worker --loglevel=info
+    env_file:
+      - ./services/venue-service/.env
+    environment:
+      <<: *venue-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      venue-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    networks:
+      - bmv-network
+    restart: unless-stopped
   # ==========================================
   # Redis Cache & Message Broker
   # ==========================================
@@ -71,12 +171,27 @@ services:
       - redis-data:/data
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     networks:
       - bmv-network
     restart: unless-stopped
 
 volumes:
   redis-data:
+    driver: local
+  static_volume:
+    driver: local
+  venue_static_volume:
     driver: local
 
 networks:

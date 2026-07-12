@@ -8,3 +8,5 @@ drf-spectacular
 django-redis
 structlog
 celery
+requests
+dj-database-url

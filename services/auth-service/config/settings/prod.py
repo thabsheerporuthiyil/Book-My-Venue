@@ -6,12 +6,13 @@ Extends base.py with production hardening:
   - HTTPS enforcement (SSL redirect, HSTS)
   - Strict CORS
   - Env-driven ALLOWED_HOSTS
-  - django-tenants compatible PostgreSQL backend
+  - Production PostgreSQL backend
 
 Usage:
   DJANGO_SETTINGS_MODULE=config.settings.prod python manage.py ...
 """
 
+import dj_database_url
 from decouple import config
 
 from .base import *  # noqa: F401, F403
@@ -57,8 +58,9 @@ DATABASES = {
 # =============================================================================
 # HTTPS / HSTS
 # =============================================================================
-
-SECURE_SSL_REDIRECT = True
+# SSL Redirection is handled by the Nginx API Gateway, NOT Django.
+# If Django enforces this, Docker internal healthchecks (HTTP) will fail with 301 loops.
+SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 JWT_AUTH_COOKIE_SECURE = True
@@ -76,4 +78,4 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # =============================================================================
 
 # Ensure machine-readable JSON logs in production
-LOGGING["handlers"]["console"]["formatter"] = "json_formatter"
+LOGGING["handlers"]["console"]["formatter"] = "json_formatter"  # noqa: F405

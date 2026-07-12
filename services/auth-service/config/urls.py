@@ -1,3 +1,4 @@
+from apps.common.views import DeepHealthCheckView, HealthCheckView
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
@@ -7,11 +8,10 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
-from apps.common.views import HealthCheckView
-
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", HealthCheckView.as_view(), name="health-check"),
+    path("health/deep/", DeepHealthCheckView.as_view(), name="deep-health-check"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/docs/",

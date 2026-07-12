@@ -762,6 +762,11 @@ Containerized using:
 Docker + Docker Compose
 ```
 
+### Advanced Docker Architecture:
+- **Nginx Dynamic DNS**: The API Gateway uses Docker's internal DNS resolver (`127.0.0.11`) and variable-based `proxy_pass` to evaluate microservices at request time. This allows the Gateway to boot up flawlessly even if downstream microservices (like Venue or Booking) are temporarily offline or haven't been built yet.
+- **Compose YAML Anchors**: Environment configurations are kept DRY using YAML anchors (e.g., `x-auth-env`), keeping the `docker-compose.yml` clean and scalable.
+- **Least Privilege Execution**: Dockerfiles compile virtual environments securely via Astral `uv`, drop `root` privileges, and run Gunicorn securely under the `appuser` system group.
+
 Each service:
 
 ```text
@@ -772,18 +777,41 @@ Dockerfile (multi-stage for production)
 
 # 28. Health Endpoints
 
-Every service exposes:
+Every service exposes two health checks:
+
+### 28.1 Liveness Probe (Shallow)
 
 ```http
 GET /health/
 ```
 
-Response:
+Response `200 OK`:
 
 ```json
 {
   "status": "ok",
   "service": "auth-service"
+}
+```
+
+### 28.2 Readiness Probe (Deep)
+
+```http
+GET /health/deep/
+```
+
+Verifies connectivity to all critical dependencies (PostgreSQL, Redis). If any dependency is unreachable, it returns `503 Service Unavailable`.
+
+Response `200 OK` (or `503 Service Unavailable`):
+
+```json
+{
+  "status": "ok",
+  "service": "auth-service",
+  "dependencies": {
+    "database": "ok",
+    "redis_cache": "ok"
+  }
 }
 ```
 

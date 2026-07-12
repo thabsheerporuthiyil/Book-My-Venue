@@ -43,6 +43,15 @@ Deep dives into how specific parts of the system are implemented.
 
 ---
 
+### [Operational Guides](./guides/)
+Operational procedures for managing the platform.
+1. **[local_development.md](./guides/local_development.md)**: Strategies for running the microservices locally with low RAM using Docker Compose Profiles.
+2. **[multi_tenancy.md](./guides/multi_tenancy.md)**: How vendor environments are provisioned.
+3. **[authentication.md](./guides/authentication.md)**: How the Nginx Gateway verifies JWTs.
+4. **[testing.md](./guides/testing.md)**: Overview of integration testing.
+
+---
+
 ## 🛠️ Runbooks
 
 Operational procedures for managing the platform.

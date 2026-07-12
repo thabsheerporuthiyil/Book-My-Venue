@@ -1,0 +1,1 @@
+# platform/common/events package

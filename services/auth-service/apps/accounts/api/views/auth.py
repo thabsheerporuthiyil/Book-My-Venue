@@ -68,6 +68,36 @@ class TokenRefreshAPIView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        # ---------------------------------------------------------------------
+        # RACE CONDITION FIX
+        # ---------------------------------------------------------------------
+        # React apps often fire multiple concurrent requests when a token expires.
+        # If ROTATE_REFRESH_TOKENS=True, the first request succeeds and blacklists
+        # the token. The subsequent requests (milliseconds later) fail with 401.
+        # We cache the exact token response for 5 seconds keyed by the old token.
+        # ---------------------------------------------------------------------
+        import hashlib
+
+        from django.core.cache import cache
+
+        token_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
+        cache_key = f"jwt_refresh_race:{token_hash}"
+
+        cached_tokens = cache.get(cache_key)
+        if cached_tokens:
+            response = Response(
+                {
+                    "success": True,
+                    "message": "Token refreshed (cached).",
+                },
+                status=status.HTTP_200_OK,
+            )
+            set_jwt_cookies(response, cached_tokens["access"], cached_tokens.get("refresh"))
+            return response
+
+        # ---------------------------------------------------------------------
+        # Standard Token Refresh Logic
+        # ---------------------------------------------------------------------
         # We pass the refresh token into the serializer's data dictionary to simulate a normal request
         serializer = TokenRefreshSerializer(data={"refresh": refresh_token})
 
@@ -83,6 +113,11 @@ class TokenRefreshAPIView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        tokens = serializer.validated_data
+
+        # Cache the newly generated tokens for 5 seconds
+        cache.set(cache_key, {"access": tokens["access"], "refresh": tokens.get("refresh")}, timeout=5)
+
         response = Response(
             {
                 "success": True,
@@ -91,6 +126,5 @@ class TokenRefreshAPIView(APIView):
             status=status.HTTP_200_OK,
         )
 
-        tokens = serializer.validated_data
         set_jwt_cookies(response, tokens["access"], tokens.get("refresh"))
         return response

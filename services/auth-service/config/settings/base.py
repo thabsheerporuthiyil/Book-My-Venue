@@ -178,6 +178,7 @@ REST_FRAMEWORK = {
         "anon": "30/minute",  # Anonymous endpoints (register, docs)
         "user": "200/minute",  # Authenticated endpoints (me, tenants)
         "login": "5/minute",  # Brute-force protection on login endpoint
+        "resend_otp": "3/minute",  # Prevent email pumping/spam attacks
     },
 }
 

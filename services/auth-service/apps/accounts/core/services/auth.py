@@ -1,6 +1,10 @@
 import logging
+import time
+from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth import authenticate
+from django.core.cache import cache
 from rest_framework_simplejwt.token_blacklist.models import (
     BlacklistedToken,
     OutstandingToken,
@@ -41,6 +45,14 @@ def authenticate_user(email: str, password: str):
     user = authenticate(username=email_clean, password=password)
 
     if not user:
+        # Django's default ModelBackend returns None for inactive users.
+        # We manually verify if the failure was due to an inactive account.
+        from apps.accounts.models import User
+
+        db_user = User.objects.filter(email=email_clean).first()
+        if db_user and not db_user.is_active and db_user.check_password(password):
+            raise InactiveUserError("User account is inactive.")
+
         AccountLockoutTracker.record_failed_attempt(email_clean)
         logger.warning("Failed login attempt for: %s", email_clean)
         raise InvalidCredentialsError("Invalid email or password.")
@@ -86,6 +98,17 @@ def logout_all_user_sessions(user):
 
     if blacklisted:
         BlacklistedToken.objects.bulk_create(blacklisted, ignore_conflicts=True)
+
+    # =========================================================================
+    # GLOBAL REVOCATION TIMESTAMP (INSTANT ACCESS TOKEN INVALIDATION)
+    # =========================================================================
+    # Write the current UNIX timestamp to Redis. The custom JWT authentication
+    # class will intercept tokens and reject them if their `iat` is older than this.
+    current_timestamp = int(time.time())
+    # We only need to store this in Redis for the maximum possible lifespan
+    # of an access token. After that, the token naturally expires anyway.
+    access_token_lifetime = settings.SIMPLE_JWT.get("ACCESS_TOKEN_LIFETIME", timedelta(minutes=15)).total_seconds()
+    cache.set(f"jwt:revoke:{user.id}", current_timestamp, timeout=int(access_token_lifetime) + 10)
 
     logger.info("Terminated all active sessions for user %s", user.email)
 

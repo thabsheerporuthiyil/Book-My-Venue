@@ -69,3 +69,10 @@ class UnverifiedAccountError(AccountBaseException):
 
     error_code = "UNVERIFIED_ACCOUNT"
     status_code = 403
+
+
+class InvalidOTPError(AccountBaseException):
+    """OTP has expired or does not exist."""
+
+    error_code = "INVALID_OTP"
+    status_code = 400

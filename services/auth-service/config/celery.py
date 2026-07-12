@@ -13,5 +13,14 @@ app = Celery("auth_service")
 #   should have a `CELERY_` prefix.
 app.config_from_object("django.conf:settings", namespace="CELERY")
 
+from celery.schedules import crontab  # noqa: E402
+
 # Load task modules from all registered Django apps.
 app.autodiscover_tasks()
+
+app.conf.beat_schedule = {
+    "delete-ghost-users-daily": {
+        "task": "accounts.delete_unverified_ghost_users",
+        "schedule": crontab(hour=0, minute=0),  # Run daily at midnight UTC
+    },
+}

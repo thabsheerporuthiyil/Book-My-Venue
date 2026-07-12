@@ -28,7 +28,7 @@ ai-service            RAG, embeddings, agentic AI features (Port 8005)
 - Django REST Framework (auth, venue, booking, notification services)
 - FastAPI (ai-service)
 - djangorestframework-simplejwt — JWT authentication with HttpOnly cookies
-- Row-Level Multi-Tenancy — isolated data per tenant (Uber/Airbnb pattern)
+- Row-Level Multi-Tenancy — isolated data per tenant
 - drf-spectacular — OpenAPI / Swagger documentation
 - dj-database-url — DATABASE_URL parsing
 - python-decouple — environment variable management

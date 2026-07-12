@@ -36,7 +36,7 @@ X-Internal-API-Key: <secret>
 }
 ```
 
-The auth service checks the `TenantMembership` table and responds with the user's role (OWNER, MANAGER, STAFF) for that specific tenant. 
+The auth service checks the `TenantMembership` table and responds with the user's role (OWNER, MANAGER, STAFF) for that specific tenant.
 
 ### 4. Query Filtering
 Once the downstream service validates the context, it **must** filter all database queries by that `tenant_id`.
@@ -46,7 +46,23 @@ Once the downstream service validates the context, it **must** filter all databa
 venues = Venue.objects.filter(tenant_id=current_tenant_id)
 
 # BAD: Data leak! Will return all venues across all tenants
-venues = Venue.objects.all() 
+venues = Venue.objects.all()
 ```
 
 > **Warning:** Row-level tenancy requires strict discipline in the Service and Selector layers to ensure `tenant_id` is always applied to queries.
+
+## 5. Tenant Provisioning
+When a new Vendor registers on the platform, we must provision their multi-tenant environment. To ensure the API remains fast, this is handled **asynchronously via Celery**:
+
+1. The Vendor registers via `/api/auth/register/vendor/`.
+2. The API creates the `User`, `Tenant`, and `TenantMembership` (Role: OWNER) synchronously.
+3. The API fires a Celery task: `dispatch_tenant_provisioning.delay(tenant_id)`.
+4. The background worker reaches out to the `ServiceRegistry` and provisions the Tenant across all active downstream microservices (e.g., creating default Venue policies).
+
+## 6. Architectural Decision: Why not `django-tenants`?
+A common pattern in monolithic Django apps is "Schema-per-Tenant" using the `django-tenants` package, which creates a separate PostgreSQL schema for every tenant. We explicitly **chose not to use this** for the following reasons:
+
+1. **Microservice Incompatibility:** `django-tenants` relies on routing requests via subdomains in a monolith. In our microservice architecture, replicating complex schema-routing logic across Auth, Venue, and Booking services would be an operational nightmare.
+2. **Database Migrations at Scale:** If we have 10,000 tenants, `django-tenants` requires running migrations across 10,000 separate schemas, turning a 2-second deployment into hours of downtime. Row-level migrations run exactly once.
+3. **Cross-Tenant Analytics:** Running aggregate queries across the entire platform (e.g., total platform bookings) requires looping through 10,000 schemas in `django-tenants`. In row-level tenancy, it is a single millisecond-fast SQL query.
+4. **Serverless DB & Connection Pooling:** We use Neon DB. Heavy schema context-switching (`SET search_path TO tenantX`) degrades the performance of connection poolers (like PgBouncer) and serverless read-replicas. Row-level tenancy requires zero context switching.

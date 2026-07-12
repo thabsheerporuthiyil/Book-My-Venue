@@ -39,7 +39,7 @@ class AccountLockoutTracker:
 
         # If we just hit the max attempts, reset the timeout to ensure the full lockout period starts NOW
         if attempts == cls.MAX_ATTEMPTS:
-            cache.expire(key, timeout=cls.LOCKOUT_TIME_SECONDS)
+            cache.set(key, attempts, timeout=cls.LOCKOUT_TIME_SECONDS)
 
         return attempts
 

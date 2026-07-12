@@ -18,3 +18,12 @@ class LoginRateThrottle(AnonRateThrottle):
     """
 
     scope = "login"
+
+
+class ResendOTPRateThrottle(AnonRateThrottle):
+    """
+    Restricts OTP resends to 3 per minute per IP address.
+    Mitigates SMS/Email pumping and spam attacks.
+    """
+
+    scope = "resend_otp"

@@ -8,6 +8,7 @@ from apps.accounts.api.serializers.otp import (
     ResendOTPInputSerializer,
     VerifyOTPInputSerializer,
 )
+from apps.accounts.api.throttles import ResendOTPRateThrottle
 from apps.accounts.core.services.otp import generate_and_send_otp, verify_otp
 from apps.accounts.models import User
 
@@ -40,7 +41,7 @@ class VerifyOTPAPIView(APIView):
 
 class ResendOTPAPIView(APIView):
     permission_classes = [permissions.AllowAny]
-    throttle_classes = [AnonRateThrottle]
+    throttle_classes = [ResendOTPRateThrottle]
 
     @extend_schema(request=ResendOTPInputSerializer)
     def post(self, request):
@@ -52,13 +53,8 @@ class ResendOTPAPIView(APIView):
         try:
             user = User.objects.get(email=email.strip().lower())
 
-            if user.is_verified:
-                return Response(
-                    {"success": False, "message": "Account is already verified."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            generate_and_send_otp(user)
+            if not user.is_verified:
+                generate_and_send_otp(user)
 
         except User.DoesNotExist:
             # Silently succeed to prevent email enumeration attacks
