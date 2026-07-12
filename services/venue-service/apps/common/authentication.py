@@ -44,6 +44,10 @@ class AuthenticatedUser:
         self.tenant = SimpleNamespace(**tenant_data) if tenant_data else None
         self.is_authenticated = True
 
+    @property
+    def pk(self):
+        return self.id
+
     def __str__(self):
         return f"AuthenticatedUser({self.email})"
 
@@ -116,3 +120,9 @@ class InternalJWTAuthentication(BaseAuthentication):
         raw = f"{token}:{tenant_id or 'none'}"
         hashed = hashlib.sha256(raw.encode()).hexdigest()[:16]
         return f"venue:auth:{hashed}"
+
+    def authenticate_header(self, request):
+        """
+        Required by DRF to return 401 instead of 403 for unauthenticated requests.
+        """
+        return "Bearer"
