@@ -12,18 +12,23 @@ from apps.venues.core.exceptions import VenueNotFoundError
 from apps.venues.core.models import Venue, VenueImage
 
 
-def get_venue_by_id(*, venue_id):
+def get_venue_by_id(*, venue_id, require_approved=True):
     """
     Get a single venue with all its relations prefetched.
-    Used for public detail views. Only returns APPROVED venues.
+    If require_approved is True, only returns APPROVED venues.
     """
     try:
-        return Venue.objects.prefetch_related(
+        qs = Venue.objects.prefetch_related(
             "category",
             "policies",
             "venue_amenities__amenity",
             Prefetch("images", queryset=VenueImage.objects.all().order_by("sort_order")),
-        ).get(id=venue_id, is_active=True, approval_status=ApprovalStatus.APPROVED)
+        ).filter(id=venue_id, is_active=True)
+
+        if require_approved:
+            qs = qs.filter(approval_status=ApprovalStatus.APPROVED)
+
+        return qs.get()
     except Venue.DoesNotExist as e:
         raise VenueNotFoundError() from e
 
