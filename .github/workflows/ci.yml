@@ -19,14 +19,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Install Ruff
-        run: uv pip install ruff --system
-
       - name: Run Ruff Linter
-        run: ruff check .
+        run: uvx ruff check .
 
       - name: Run Ruff Formatter Check
-        run: ruff format --check .
+        run: uvx ruff format --check .
 
   # ==========================================
   # 2. Venue Service Tests
@@ -48,17 +45,18 @@ jobs:
       - name: Install Dependencies
         run: |
           cd services/venue-service
-          uv pip install --system -r requirements/dev.txt
+          uv venv
+          uv pip install -r requirements/dev.txt
 
       - name: Run Pytest
         env:
-          DJANGO_SETTINGS_MODULE: config.settings.test
+          DJANGO_SETTINGS_MODULE: config.settings.dev
           DJANGO_SECRET_KEY: test-key-for-ci
           DATABASE_URL: "sqlite:///:memory:"
           REDIS_URL: "redis://localhost:6379/0"
         run: |
           cd services/venue-service
-          pytest
+          uv run pytest
 
   # ==========================================
   # 3. Auth Service Tests
@@ -80,14 +78,15 @@ jobs:
       - name: Install Dependencies
         run: |
           cd services/auth-service
-          uv pip install --system -r requirements/dev.txt
+          uv venv
+          uv pip install -r requirements/dev.txt
 
       - name: Run Pytest
         env:
-          DJANGO_SETTINGS_MODULE: config.settings.test
+          DJANGO_SETTINGS_MODULE: config.settings.dev
           DJANGO_SECRET_KEY: test-key-for-ci
           DATABASE_URL: "sqlite:///:memory:"
           REDIS_URL: "redis://localhost:6379/0"
         run: |
           cd services/auth-service
-          pytest
+          uv run pytest
