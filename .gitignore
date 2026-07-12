@@ -11,6 +11,9 @@ venv/
 env/
 media/
 staticfiles/
+*.egg-info/
+build/
+dist/
 
 # Django
 *.log

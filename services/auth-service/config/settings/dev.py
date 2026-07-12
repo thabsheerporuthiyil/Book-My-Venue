@@ -48,4 +48,4 @@ SILKY_ANALYZE_QUERIES = True
 # =============================================================================
 
 # Ensure pretty console logs in development
-LOGGING["handlers"]["console"]["formatter"] = "console_formatter"
+LOGGING["handlers"]["console"]["formatter"] = "console_formatter"  # noqa: F405

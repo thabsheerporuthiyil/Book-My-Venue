@@ -1,6 +1,5 @@
-from django.urls import path
-
 from apps.accounts.api.views.internal import ValidateContextInternalAPIView
+from django.urls import path
 
 urlpatterns = [
     path(
