@@ -12,4 +12,4 @@ dj-database-url>=2.1,<3.0
 cloudinary>=1.39,<2.0
 
 # Platform library
--e ../../../libraries
+-e ../../libraries

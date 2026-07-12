@@ -52,7 +52,7 @@ class VendorVenueDetailAPIView(APIView):
             data=serializer.validated_data,
         )
 
-        venue = get_venue_by_id(venue_id=venue_id)
+        venue = get_venue_by_id(venue_id=venue_id, require_approved=False)
         return Response(VenueDetailSerializer(venue).data)
 
 

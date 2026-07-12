@@ -247,9 +247,7 @@ class TestUnauthenticatedAccessProtection:
 
     def test_cannot_access_protected_endpoint_with_expired_format(self, api_client):
         """A structurally valid but tampered JWT should fail."""
-        fake_jwt = (
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." "eyJ1c2VyX2lkIjoiZmFrZSIsImV4cCI6MH0." "invalid_signature_here"
-        )
+        fake_jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZmFrZSIsImV4cCI6MH0.invalid_signature_here"
         api_client.cookies["access_token"] = fake_jwt
         response = api_client.get(ME_URL)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED

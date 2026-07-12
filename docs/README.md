@@ -49,6 +49,7 @@ Operational procedures for managing the platform.
 2. **[multi_tenancy.md](./guides/multi_tenancy.md)**: How vendor environments are provisioned.
 3. **[authentication.md](./guides/authentication.md)**: How the Nginx Gateway verifies JWTs.
 4. **[testing.md](./guides/testing.md)**: Overview of integration testing.
+5. **[version_control.md](./guides/version_control.md)**: Details our Trunk-Based Development and CI/CD workflow.
 
 ---
 

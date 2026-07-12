@@ -10,3 +10,6 @@ structlog
 celery
 requests
 dj-database-url
+
+# Platform library
+-e ../../libraries

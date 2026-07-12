@@ -78,6 +78,6 @@ class VenueCreateAPIView(APIView):
         )
 
         # Re-fetch with all relations for the response
-        venue_with_relations = get_venue_by_id(venue_id=venue.id)
+        venue_with_relations = get_venue_by_id(venue_id=venue.id, require_approved=False)
         response_serializer = VenueDetailSerializer(venue_with_relations)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
