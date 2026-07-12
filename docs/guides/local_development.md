@@ -9,6 +9,15 @@ To ensure the platform can be developed on 8GB RAM machines comfortably, we util
 *   If on Windows, ensure your `.wslconfig` limits Docker memory to 2.5GB to prevent system freezes.
 *   Python 3.12+ installed locally.
 
+## Code Quality & Pre-commit
+We use `pre-commit` with `ruff` to automatically lint and format code before it is committed.
+If you haven't already, install it globally:
+```powershell
+uv pip install pre-commit ruff --system
+pre-commit install
+```
+Any time you run `git commit`, `ruff` will automatically format your code. If it catches logical errors it cannot auto-fix, the commit will be blocked until you fix them.
+
 ## The `dev.ps1` Helper
 On Windows, use the `dev.ps1` script located in the project root to control the environment.
 
